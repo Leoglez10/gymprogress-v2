@@ -26,9 +26,12 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   
+  // Estado para la animación de "Serie Añadida"
+  const [animatingSetIdx, setAnimatingSetIdx] = useState<number | null>(null);
+  
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newExerciseMuscle, setNewExerciseMuscle] = useState('Pecho');
-  const muscleChips = ['Pecho', 'Espalda', 'Piernas', 'Hombros', 'Brazos', 'Core', 'Cardio'];
+  const muscleGroups = ['Pecho', 'Espalda', 'Piernas', 'Hombros', 'Brazos', 'Core', 'Cardio'];
   
   const [library, setLibrary] = useState<Exercise[]>([]);
 
@@ -77,7 +80,6 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
     setAddedFeedback(exercise.id);
     setToastMessage(`¡${exercise.name} añadido!`);
     
-    // Feedback táctil visual: el botón cambia y el toast aparece
     setTimeout(() => {
       setAddedFeedback(null);
       setToastMessage(null);
@@ -122,6 +124,10 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
     const lastSet = updated[exerciseIdx].sets[updated[exerciseIdx].sets.length - 1];
     updated[exerciseIdx].sets.push({ ...lastSet });
     setSelectedExercises(updated);
+    
+    // Disparar animación de feedback
+    setAnimatingSetIdx(exerciseIdx);
+    setTimeout(() => setAnimatingSetIdx(null), 800);
   };
 
   const duplicateSet = (exerciseIdx: number, setIdx: number) => {
@@ -129,6 +135,9 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
     const setToDuplicate = { ...updated[exerciseIdx].sets[setIdx] };
     updated[exerciseIdx].sets.splice(setIdx + 1, 0, setToDuplicate);
     setSelectedExercises(updated);
+    
+    setAnimatingSetIdx(exerciseIdx);
+    setTimeout(() => setAnimatingSetIdx(null), 800);
   };
 
   const removeSet = (exerciseIdx: number, setIdx: number) => {
@@ -252,7 +261,7 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
 
                     <div className="flex-1 space-y-6 max-h-[45vh] overflow-y-auto no-scrollbar pr-1">
                       {entry.sets.map((set, setIdx) => (
-                        <div key={setIdx} className="space-y-4 p-5 bg-slate-50 dark:bg-background-dark/50 rounded-[2.5rem] border border-black/5 relative shadow-inner">
+                        <div key={setIdx} className={`space-y-4 p-5 bg-slate-50 dark:bg-background-dark/50 rounded-[2.5rem] border border-black/5 relative shadow-inner transition-all duration-500 ${setIdx === entry.sets.length - 1 && animatingSetIdx === exIdx ? 'animate-in fade-in slide-in-from-bottom-4 zoom-in-95' : ''}`}>
                           <div className="flex items-center justify-between px-2">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Serie {setIdx + 1}</span>
                             <div className="flex items-center gap-2">
@@ -316,9 +325,22 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => addSet(exIdx)} className="w-full py-5 mt-6 rounded-[2rem] border-4 border-dashed border-slate-200 dark:border-white/10 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] transition-all">
-                      + Añadir serie
-                    </button>
+                    
+                    <div className="relative mt-6">
+                      {/* Burbuja flotante "+1" al añadir serie */}
+                      {animatingSetIdx === exIdx && (
+                        <div className="absolute left-1/2 -top-12 -translate-x-1/2 bg-primary text-black size-10 rounded-full flex items-center justify-center font-black text-xs shadow-xl animate-out fade-out slide-out-to-top-12 duration-700 pointer-events-none z-50">
+                          +1
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={() => addSet(exIdx)} 
+                        className={`w-full py-5 rounded-[2rem] border-4 border-dashed border-slate-200 dark:border-white/10 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] transition-all active:scale-95 active:border-primary active:text-primary ${animatingSetIdx === exIdx ? 'scale-[0.98] border-primary/50 text-primary' : ''}`}
+                      >
+                        + Añadir serie
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -376,7 +398,6 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xl flex items-end animate-in fade-in duration-300">
           <div onClick={() => { setShowSelector(false); setIsCreatingNew(false); }} className="absolute inset-0"></div>
           
-          {/* TOAST NOTIFICATION */}
           {toastMessage && (
             <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[110] animate-in slide-in-from-top fade-in duration-300">
               <div className="bg-primary text-black px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_10px_30px_rgba(255,239,10,0.4)] border border-white/20 font-black text-sm">
@@ -411,10 +432,14 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
               {isCreatingNew ? (
                 <div className="space-y-10 animate-in slide-in-from-right-4">
                   <div className="space-y-4">
-                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Grupo Muscular</label>
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Músculo Principal</label>
                     <div className="flex flex-wrap gap-3">
-                      {muscleChips.map(m => (
-                        <button key={m} onClick={() => setNewExerciseMuscle(m)} className={`px-6 py-4 rounded-2xl text-xs font-black transition-all border-2 ${newExerciseMuscle === m ? 'bg-primary border-primary text-black shadow-lg' : 'bg-transparent border-black/5 text-slate-400'}`}>
+                      {muscleGroups.map(m => (
+                        <button 
+                          key={m} 
+                          onClick={() => setNewExerciseMuscle(m)} 
+                          className={`px-8 py-4 rounded-2xl text-xs font-black transition-all border-2 ${newExerciseMuscle === m ? 'bg-primary border-primary text-black shadow-lg scale-105' : 'bg-slate-50 dark:bg-background-dark border-black/5 text-slate-400'}`}
+                        >
                           {m}
                         </button>
                       ))}

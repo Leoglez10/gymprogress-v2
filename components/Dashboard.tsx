@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, PieChart, Pie, CartesianGrid, AreaChart, Area, Tooltip } from 'recharts';
 import { UserProfile, GoalType } from '../types';
+import { getVolumeInsight } from '../services/geminiService';
 
 interface DashboardProps {
   onStartWorkout: () => void;
@@ -163,7 +164,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, userAlias, goal, 
     const currentMonthHistory = history.filter(h => new Date(h.date) >= startOfMonth);
 
     let monthlyPrCount = 0;
-    // Lógica simplificada de PR para el Dashboard
     currentMonthHistory.forEach(h => { if(h.volume > 0) monthlyPrCount += 1; });
 
     const recentPrs: any[] = [];
@@ -332,7 +332,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, userAlias, goal, 
         </div>
       )}
 
-      {showVolumeDetail && <VolumeDetailModal chartData={chartData} totalVolume={stats.totalVolume} prevVolume={stats.prevWeekVolume} onClose={() => setShowVolumeDetail(false)} />}
+      {showVolumeDetail && userProfile && (
+        <VolumeDetailModal 
+          chartData={chartData} 
+          totalVolume={stats.totalVolume} 
+          prevVolume={stats.prevWeekVolume} 
+          userProfile={userProfile}
+          onClose={() => setShowVolumeDetail(false)} 
+        />
+      )}
       
       {showFatigueDetail && <FatigueDetailModal onClose={() => setShowFatigueDetail(false)} />}
       
@@ -352,6 +360,20 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [showSorenessHelp, setShowSorenessHelp] = useState(false);
   
   const acwrValue = 1.15; // Valor simulado
+  
+  // Lógica de color dinámica para las agujetas
+  const sorenessColor = useMemo(() => {
+    if (soreness <= 3) return '#10b981'; // Emerald 500
+    if (soreness <= 7) return '#f59e0b'; // Amber 500
+    return '#ef4444'; // Red 500
+  }, [soreness]);
+
+  const sorenessColorClass = useMemo(() => {
+    if (soreness <= 3) return 'text-emerald-500';
+    if (soreness <= 7) return 'text-amber-500';
+    return 'text-red-500';
+  }, [soreness]);
+
   const readinessScore = useMemo(() => {
     let score = 50;
     if (checklist.sleep) score += 15;
@@ -362,11 +384,32 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     return Math.min(100, Math.max(0, score));
   }, [checklist, soreness]);
 
+  // Lógica extendida para el Readiness Score con colores y contraste
   const statusLabel = useMemo(() => {
-    if (readinessScore > 85) return { label: 'ELITE', color: 'text-green-500', bg: 'bg-green-500' };
-    if (readinessScore > 65) return { label: 'ÓPTIMO', color: 'text-emerald-500', bg: 'bg-emerald-500' };
-    if (readinessScore > 40) return { label: 'MODERADO', color: 'text-orange-500', bg: 'bg-orange-500' };
-    return { label: 'RIESGO', color: 'text-red-500', bg: 'bg-red-500' };
+    if (readinessScore > 85) return { 
+      label: 'ELITE', 
+      color: 'text-blue-500', 
+      bg: 'bg-blue-600', 
+      textColor: 'text-white' 
+    };
+    if (readinessScore > 65) return { 
+      label: 'ÓPTIMO', 
+      color: 'text-emerald-500', 
+      bg: 'bg-emerald-500', 
+      textColor: 'text-white' 
+    };
+    if (readinessScore > 40) return { 
+      label: 'MODERADO', 
+      color: 'text-amber-500', 
+      bg: 'bg-amber-400', 
+      textColor: 'text-black' 
+    };
+    return { 
+      label: 'RIESGO', 
+      color: 'text-red-500', 
+      bg: 'bg-red-500', 
+      textColor: 'text-white' 
+    };
   }, [readinessScore]);
 
   return (
@@ -392,7 +435,7 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                  <path d="M 10 45 A 35 35 0 0 1 90 45" fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" />
                  <path 
                     d="M 10 45 A 35 35 0 0 1 90 45" 
-                    fill="none" stroke={statusLabel.label === 'ÓPTIMO' ? '#10b981' : '#FFEF0A'} strokeWidth="8" strokeLinecap="round" 
+                    fill="none" stroke={statusLabel.bg.replace('bg-', '#')} strokeWidth="8" strokeLinecap="round" 
                     strokeDasharray="125.6" 
                     strokeDashoffset={125.6 - (125.6 * (acwrValue / 2))}
                     className="transition-all duration-1000"
@@ -408,7 +451,6 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
            </div>
         </div>
 
-        {/* CHECKLIST INTERACTIVO */}
         <div className="space-y-6 mb-8">
            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-2">Checklist de Hoy</h4>
            <div className="grid grid-cols-2 gap-4">
@@ -431,7 +473,6 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
            </div>
         </div>
 
-        {/* SECCIÓN DE AGUJETAS CENTRALIZADA Y MEJORADA */}
         <div className="bg-slate-50 dark:bg-background-dark/50 p-8 rounded-[3rem] mb-10 border border-black/5 flex flex-col items-center">
            <div className="flex flex-col items-center gap-2 mb-6 w-full relative">
               <div className="flex items-center gap-2 justify-center">
@@ -445,7 +486,6 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </button>
               </div>
 
-              {/* EXPLICACIÓN ANIMADA INLINE */}
               <div className={`overflow-hidden transition-all duration-500 ease-in-out w-full px-2 ${showSorenessHelp ? 'max-h-40 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0 pointer-events-none'}`}>
                 <div className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-emerald-500/20 shadow-sm text-center">
                   <p className="text-[11px] font-bold text-slate-500 leading-relaxed italic">
@@ -454,41 +494,43 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
               </div>
 
-              <span className="text-5xl font-black tabular-nums tracking-tighter mt-4 text-emerald-500">{soreness}<span className="text-lg text-slate-300">/10</span></span>
+              <span className={`text-5xl font-black tabular-nums tracking-tighter mt-4 transition-colors duration-300 ${sorenessColorClass}`}>
+                {soreness}<span className="text-lg text-slate-300">/10</span>
+              </span>
            </div>
 
            <div className="w-full px-4 mb-2">
               <input 
                   type="range" min="1" max="10" value={soreness} 
                   onChange={(e) => setSoreness(parseInt(e.target.value))}
-                  className="w-full h-4 bg-slate-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer accent-emerald-500 slider-thumb-premium" 
+                  style={{ accentColor: sorenessColor } as any}
+                  className="w-full h-4 bg-slate-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer slider-thumb-premium" 
               />
               <div className="flex justify-between mt-3 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  <span className={soreness < 4 ? 'text-emerald-500 scale-110 transition-transform' : 'opacity-40'}>Fresco</span>
-                  <span className={soreness > 7 ? 'text-red-500 scale-110 transition-transform' : 'opacity-40'}>Dolorido</span>
+                  <span className={`transition-all duration-300 ${soreness <= 3 ? 'text-emerald-500 scale-110 font-black' : 'opacity-40'}`}>Fresco</span>
+                  <span className={`transition-all duration-300 ${soreness >= 8 ? 'text-red-500 scale-110 font-black' : 'opacity-40'}`}>Dolorido</span>
               </div>
            </div>
         </div>
 
-        {/* READINESS SCORE - TAMAÑO Y COLOR POTENCIADO */}
-        <div className="bg-black dark:bg-zinc-800 text-white p-10 rounded-[4rem] mb-12 shadow-2xl flex items-center justify-between overflow-hidden relative mx-2 min-h-[140px]">
-           <div className={`absolute top-0 left-0 h-full opacity-40 transition-all duration-1000 ${statusLabel.bg}`} style={{ width: `${readinessScore}%` }}></div>
+        {/* BARRA DE READY SCORE DINÁMICA */}
+        <div className={`p-10 rounded-[4rem] mb-12 shadow-2xl flex items-center justify-between overflow-hidden relative mx-2 min-h-[140px] transition-all duration-500 ${statusLabel.bg} ${statusLabel.textColor}`}>
+           <div className={`absolute top-0 left-0 h-full opacity-30 transition-all duration-1000 bg-white/40`} style={{ width: `${readinessScore}%` }}></div>
            <div className="relative z-10 flex flex-col">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] opacity-60 mb-1">Ready Score</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70 mb-1">Ready Score</p>
               <p className="text-6xl font-black tabular-nums tracking-tighter leading-none">{readinessScore}%</p>
            </div>
            <div className="relative z-10 text-right ml-4">
-              <p className="text-sm font-bold leading-tight max-w-[150px]">
-                {readinessScore > 70 ? 'Cuerpo en estado óptimo. Máxima intensidad permitida.' : 'Fatiga detectada. Considera una descarga técnica.'}
+              <p className="text-sm font-black leading-tight max-w-[150px] uppercase italic">
+                {readinessScore > 70 ? 'Cuerpo en estado óptimo. Máxima intensidad.' : 'Fatiga detectada. Considera una descarga técnica.'}
               </p>
            </div>
         </div>
 
-        {/* BOTÓN MÁS ACCESIBLE - REDISEÑADO PARA NO SER DE ORILLA A ORILLA */}
         <div className="px-10 pb-6">
           <button 
             onClick={onClose}
-            className="w-full min-h-[85px] rounded-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl active:scale-[0.97] transition-all shadow-[0_20px_50px_-10px_rgba(16,185,129,0.5)] uppercase tracking-[0.25em] flex items-center justify-center gap-3 border-4 border-emerald-400/20"
+            className={`w-full min-h-[85px] rounded-full text-white font-black text-xl active:scale-[0.97] transition-all shadow-2xl uppercase tracking-[0.25em] flex items-center justify-center gap-3 border-4 border-white/20 ${statusLabel.bg}`}
             aria-label="Confirmar preparación y cerrar modal"
           >
             <span className="material-symbols-outlined font-black text-3xl">offline_bolt</span>
@@ -503,16 +545,15 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           appearance: none;
           width: 36px;
           height: 36px;
-          background: #10b981;
+          background: ${sorenessColor};
           cursor: pointer;
           border-radius: 50%;
           border: 5px solid white;
-          box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
           transition: all 0.2s ease-in-out;
         }
         .slider-thumb-premium::-webkit-slider-thumb:active {
           transform: scale(1.25);
-          box-shadow: 0 0 0 12px rgba(16, 185, 129, 0.15);
         }
       `}</style>
     </div>
@@ -529,7 +570,10 @@ const CheckItem: React.FC<{ icon: string, label: string, active: boolean, onClic
   </button>
 );
 
-const VolumeDetailModal: React.FC<{ chartData: any[], totalVolume: number, prevVolume: number, onClose: () => void }> = ({ chartData, totalVolume, prevVolume, onClose }) => {
+const VolumeDetailModal: React.FC<{ chartData: any[], totalVolume: number, prevVolume: number, userProfile: UserProfile, onClose: () => void }> = ({ chartData, totalVolume, prevVolume, userProfile, onClose }) => {
+  const [aiInsight, setAiInsight] = useState<string | null>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
   const trend = useMemo(() => {
     if (prevVolume === 0) return { percent: totalVolume > 0 ? 100 : 0, up: true };
     const diff = ((totalVolume - prevVolume) / prevVolume) * 100;
@@ -544,37 +588,123 @@ const VolumeDetailModal: React.FC<{ chartData: any[], totalVolume: number, prevV
     return { message: "Descarga detectada. Escucha a tu cuerpo.", label: "AJUSTE", color: "text-orange-500" };
   }, [trend]);
 
+  const fetchAiInsight = async () => {
+    setLoadingAi(true);
+    try {
+      const advice = await getVolumeInsight(totalVolume, prevVolume, userProfile);
+      setAiInsight(advice);
+    } catch (e) {
+      setAiInsight("No pude conectar con el entrenador IA en este momento. Mi recomendación es seguir priorizando la técnica.");
+    }
+    setLoadingAi(false);
+  };
+
   return (
-    <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-3xl flex items-end animate-in fade-in duration-300 p-4 pb-0">
+    <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-3xl flex items-end animate-in fade-in duration-300">
       <div onClick={onClose} className="absolute inset-0"></div>
-      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] p-8 pb-16 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[96vh] overflow-y-auto no-scrollbar">
-        <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-8 opacity-40"></div>
-        <div className="flex items-center justify-between mb-10 px-2">
-          <div><h3 className="text-3xl font-black tracking-tighter">Análisis de Carga</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Tendencia Semanal</p></div>
-          <button onClick={onClose} className="size-14 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500"><span className="material-symbols-outlined text-3xl">close</span></button>
+      
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-500 relative overflow-hidden">
+        {/* Manija de arrastre visual */}
+        <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-6 mb-2 opacity-40"></div>
+        
+        {/* Header del Modal */}
+        <div className="flex items-center justify-between px-8 py-6">
+          <div>
+            <h3 className="text-3xl font-black tracking-tighter">Análisis de Carga</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Rendimiento Semanal</p>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="size-16 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 active:scale-90 transition-all hover:bg-slate-200 dark:hover:bg-white/10"
+          >
+            <span className="material-symbols-outlined text-4xl font-black">close</span>
+          </button>
         </div>
-        <div className="bg-slate-50 dark:bg-background-dark/50 rounded-[3rem] p-8 mb-8 border border-black/5 flex flex-col items-center">
-           <div className="relative mb-6">
-              <div className={`size-40 rounded-full border-[8px] flex flex-col items-center justify-center bg-white dark:bg-surface-dark shadow-xl ${trend.up ? 'border-primary' : 'border-orange-500'}`}>
-                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Carga</span>
-                 <span className="text-5xl font-black tabular-nums tracking-tighter">{trend.percent}%</span>
-                 <span className={`material-symbols-outlined text-3xl font-black ${trend.up ? 'text-primary' : 'text-orange-500'}`}>{trend.up ? 'trending_up' : 'trending_down'}</span>
+
+        {/* Contenido con Scroll */}
+        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-56 space-y-10">
+          <div className="bg-slate-50 dark:bg-background-dark/50 rounded-[3rem] p-8 border border-black/5 flex flex-col items-center">
+             <div className="relative mb-6">
+                <div className={`size-48 rounded-full border-[12px] flex flex-col items-center justify-center bg-white dark:bg-surface-dark shadow-xl ${trend.up ? 'border-primary' : 'border-red-500'}`}>
+                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Tendencia</span>
+                   <span className="text-6xl font-black tabular-nums tracking-tighter">+{trend.percent}%</span>
+                   <span className={`material-symbols-outlined text-4xl font-black ${trend.up ? 'text-primary' : 'text-red-500'}`}>{trend.up ? 'trending_up' : 'trending_down'}</span>
+                </div>
+             </div>
+             <p className="text-center text-xl font-medium leading-relaxed italic text-slate-700 dark:text-slate-300 px-4">
+               "{insight.message}"
+             </p>
+          </div>
+
+          <div className="h-64 w-full bg-slate-50 dark:bg-background-dark/50 rounded-[2.5rem] p-6 border border-black/5">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#FFEF0A" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#FFEF0A" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.2} />
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: '900', fill: '#94a3b8'}} />
+                  <Tooltip 
+                    cursor={{ stroke: '#FFEF0A', strokeWidth: 2 }} 
+                    content={({ active, payload }) => (active && payload ? <div className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black shadow-2xl">{payload[0].value} kg</div> : null)} 
+                  />
+                  <Area type="monotone" dataKey="volume" stroke="#FFEF0A" strokeWidth={5} fill="url(#colorVol)" dot={{r: 4, fill: '#FFEF0A', strokeWidth: 2, stroke: '#fff'}} />
+                </AreaChart>
+              </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+             <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-background-dark/50 border border-black/5">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Esta Semana</p>
+                <p className="text-2xl font-black tabular-nums">{totalVolume.toLocaleString()} <span className="text-xs opacity-40">kg</span></p>
+             </div>
+             <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-background-dark/50 border border-black/5">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Anterior</p>
+                <p className="text-2xl font-black tabular-nums">{prevVolume.toLocaleString()} <span className="text-xs opacity-40">kg</span></p>
+             </div>
+          </div>
+
+          {/* NUEVA SECCIÓN: Interpretación IA del volumen */}
+          <div className="space-y-4">
+            <button 
+              onClick={fetchAiInsight}
+              disabled={loadingAi}
+              className="w-full flex items-center justify-center gap-3 py-6 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-widest active:scale-95 transition-all shadow-xl relative overflow-hidden group"
+            >
+              {loadingAi && <div className="absolute inset-0 bg-primary/20 animate-pulse"></div>}
+              <span className="material-symbols-outlined font-black">psychology</span>
+              {loadingAi ? 'Analizando tu carga...' : '¿Cómo sé si esto es bueno?'}
+            </button>
+
+            {aiInsight && (
+              <div className="p-8 rounded-[3rem] bg-gradient-to-br from-primary/5 to-orange-400/5 border-2 border-primary/20 shadow-inner animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="size-8 rounded-lg bg-primary flex items-center justify-center text-black">
+                    <span className="material-symbols-outlined text-sm font-black">bolt</span>
+                  </div>
+                  <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-text">Análisis de Nivel</h5>
+                </div>
+                <p className="text-base font-bold leading-relaxed text-slate-800 dark:text-slate-200">
+                  {aiInsight}
+                </p>
               </div>
-           </div>
-           <p className="text-center text-lg font-medium leading-relaxed italic text-slate-700 dark:text-slate-300 px-4">"{insight.message}"</p>
+            )}
+          </div>
         </div>
-        <div className="h-60 w-full bg-slate-50 dark:bg-background-dark/50 rounded-[2.5rem] p-6 mb-8 border border-black/5">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs><linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#FFEF0A" stopOpacity={0.3}/><stop offset="95%" stopColor="#FFEF0A" stopOpacity={0}/></linearGradient></defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.2} />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: '900', fill: '#94a3b8'}} />
-                <Tooltip cursor={{ stroke: '#FFEF0A', strokeWidth: 2 }} content={({ active, payload }) => (active && payload ? <div className="bg-black text-white px-3 py-1 rounded-xl text-[10px] font-black">{payload[0].value} kg</div> : null)} />
-                <Area type="monotone" dataKey="volume" stroke="#FFEF0A" strokeWidth={4} fill="url(#colorVol)" />
-              </AreaChart>
-            </ResponsiveContainer>
+
+        {/* Botón de Cierre Ampliado y Mejorado */}
+        <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-white dark:from-surface-dark via-white dark:via-surface-dark to-transparent pt-16">
+          <button 
+            onClick={onClose} 
+            className="w-full h-28 bg-primary text-black font-black text-2xl rounded-full shadow-[0_25px_60px_-15px_rgba(255,239,10,0.5)] active:scale-[0.96] transition-all uppercase tracking-[0.25em] flex items-center justify-center gap-4 border-4 border-white/30 dark:border-black/20"
+          >
+            <span className="material-symbols-outlined font-black text-4xl">check_circle</span>
+            CERRAR ANÁLISIS
+          </button>
         </div>
-        <button onClick={onClose} className="w-full h-24 rounded-[2.5rem] bg-black dark:bg-white text-white dark:text-black font-black text-xl shadow-2xl uppercase tracking-[0.2em]">CERRAR ANÁLISIS</button>
       </div>
     </div>
   );

@@ -30,6 +30,30 @@ export const getTrainingSuggestions = async (acwrScore: number, profile: UserPro
   return response.text || "Consulta a un profesional para sugerencias detalladas.";
 };
 
+export const getVolumeInsight = async (currentVolume: number, prevVolume: number, profile: UserProfile): Promise<string> => {
+  const ai = getAI();
+  const ratioToBodyweight = (currentVolume / profile.weight).toFixed(1);
+  const trend = currentVolume > prevVolume ? "en aumento" : "en descenso o estable";
+  
+  const prompt = `
+    Analiza la calidad de mi volumen de entrenamiento semanal.
+    - Mi volumen actual: ${currentVolume} kg.
+    - Mi peso corporal: ${profile.weight} kg. (Ratio de carga semanal: ${ratioToBodyweight}x mi peso).
+    - Mi volumen anterior: ${prevVolume} kg. Mi tendencia es ${trend}.
+    - Mi objetivo: ${profile.goal}.
+    
+    ¿Este volumen es bueno o malo para mí? Explica qué indica este número sobre mi nivel actual (novato, intermedio o avanzado) y si es coherente con mi meta de ${profile.goal}. 
+    Sé muy específico, profesional y directo. Máximo 3 frases. Usa un tono de experto en fisiología del ejercicio.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt
+  });
+  
+  return response.text || "Tu volumen indica un trabajo constante. Sigue así para ver resultados.";
+};
+
 export const getWeeklyVolumeSummary = async (totalVolume: number, muscleDist: any[]): Promise<string> => {
   const ai = getAI();
   const topMuscles = muscleDist.slice(0, 2).map(m => m.name).join(' y ');
