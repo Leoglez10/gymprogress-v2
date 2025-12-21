@@ -30,13 +30,13 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [addedFeedback, setAddedFeedback] = useState<string | null>(null);
   const [library, setLibrary] = useState<Exercise[]>([]);
   const [newExerciseMuscle, setNewExerciseMuscle] = useState('Pecho');
 
   const [translateY, setTranslateY] = useState(0);
   const touchStartRef = useRef<number | null>(null);
 
+  // Cargar datos iniciales y restaurar estado si existe
   useEffect(() => {
     const savedState = localStorage.getItem('gymProgress_active_session_state');
     const savedLibrary = localStorage.getItem('gymProgress_exercises');
@@ -71,6 +71,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
     return () => clearInterval(timer);
   }, []);
 
+  // Persistir estado en cada cambio importante
   useEffect(() => {
     if (sessionRoutine) {
       const stateToSave = {
@@ -87,6 +88,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
     }
   }, [sessionRoutine, currentExerciseIdx, exerciseSets, seconds, restSeconds, isResting, restDuration, autoRestEnabled]);
 
+  // Manejo del cronómetro de descanso
   useEffect(() => {
     let interval: any;
     if (isResting && restSeconds > 0) {
@@ -122,7 +124,6 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   const getUpdatedRoutineWithCurrentProgress = () => {
     if (!sessionRoutine) return null;
     const updatedExercises = [...sessionRoutine.exercises];
-    // Asegurarnos de que el índice existe antes de actualizar
     if (updatedExercises[currentExerciseIdx]) {
       updatedExercises[currentExerciseIdx] = {
         ...updatedExercises[currentExerciseIdx],
@@ -191,6 +192,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   };
 
   const addNewExerciseFromLibrary = (ex: Exercise) => {
+    // 1. Guardar progreso actual antes de inyectar el nuevo ejercicio
     const updatedRoutineWithCurrent = getUpdatedRoutineWithCurrentProgress() || sessionRoutine;
     if (!updatedRoutineWithCurrent) return;
 
@@ -207,6 +209,8 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
 
     setSessionRoutine(finalRoutine);
     const newIdx = finalRoutine.exercises.length - 1;
+    
+    // 2. Saltar automáticamente al nuevo ejercicio añadido
     setCurrentExerciseIdx(newIdx);
     setExerciseSets([{ weight: 0, reps: 10, completed: false }]);
     
@@ -319,7 +323,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
             <div className="size-32 rounded-[2.5rem] bg-primary/10 flex items-center justify-center text-primary mb-8 shadow-inner animate-pulse">
               <span className="material-symbols-outlined text-6xl fill-1">play_circle</span>
             </div>
-            <h2 className="text-3xl font-black mb-2 tracking-tighter">Sesión Iniciada</h2>
+            <h2 className="text-3xl font-black mb-2 tracking-tighter">Sesión Vacía</h2>
             <button onClick={() => { setIsCreatingNew(false); setShowExerciseSelector(true); }} className="w-full py-7 rounded-[2.5rem] bg-primary text-black font-black text-xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4">
               <span className="material-symbols-outlined font-black text-2xl">add_circle</span>
               Añadir Ejercicio
@@ -349,7 +353,6 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
                       <h3 className="font-black text-[9px] uppercase tracking-widest text-slate-400">Control de Serie</h3>
                     </div>
                     <div className="flex gap-2">
-                       {/* BOTÓN DUPLICAR SERIE EN VIVO */}
                        <button 
                         onClick={() => duplicateSet(idx)} 
                         title="Duplicar serie"
@@ -417,7 +420,6 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
         </div>
       </footer>
 
-      {/* MODAL: SELECTOR DE EJERCICIOS (SOLUCIONADO) */}
       {showExerciseSelector && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xl flex items-end animate-in fade-in duration-300">
           <div onClick={() => { setShowExerciseSelector(false); setIsCreatingNew(false); }} className="absolute inset-0"></div>
@@ -487,7 +489,6 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
         </div>
       )}
 
-      {/* MODAL: CONFIGURACIÓN DE DESCANSO */}
       {showConfig && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200">
            <div onClick={() => setShowConfig(false)} className="absolute inset-0"></div>

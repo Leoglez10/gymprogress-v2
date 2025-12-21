@@ -52,7 +52,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onStart }) => {
         <div className="absolute inset-0 bg-gradient-to-b from-background-dark/20 via-background-dark/60 to-background-dark"></div>
       </div>
 
-      <div className="relative z-20 pt-[env(safe-area-inset-top)] px-6 flex justify-between items-center py-4">
+      {/* HEADER AJUSTADO CON MÁS ESPACIO SUPERIOR */}
+      <div className="relative z-20 pt-[calc(max(2rem,env(safe-area-inset-top))+1.5rem)] px-6 flex justify-between items-center pb-4">
         <div className="flex items-center gap-2">
           <div className="size-8 bg-primary rounded-lg flex items-center justify-center">
             <span className="material-symbols-outlined text-black font-bold text-xl">fitness_center</span>

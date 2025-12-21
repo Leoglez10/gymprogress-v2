@@ -36,8 +36,8 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
 
   return (
     <div className="min-h-full bg-background-light dark:bg-background-dark pb-40 animate-in fade-in duration-500">
-      {/* Header */}
-      <header className="flex items-center px-4 py-3 sticky top-0 z-50 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md border-b border-black/5 dark:border-white/5 pt-[env(safe-area-inset-top)]">
+      {/* Header ajustado */}
+      <header className="flex items-center px-4 py-3 sticky top-0 z-50 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md border-b border-black/5 dark:border-white/5 pt-[calc(max(1rem,env(safe-area-inset-top))+0.75rem)]">
         <button onClick={onBack} className="flex size-11 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
@@ -82,7 +82,7 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Sugerida</p>
           </button>
 
-          {/* CREAR NUEVO - TERMINOLOGÍA ACTUALIZADA */}
+          {/* CREAR NUEVO */}
           <button 
             onClick={() => onCreateCustom()}
             className="flex flex-col bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"

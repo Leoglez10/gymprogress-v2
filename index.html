@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="es" class="h-full">
+<html lang="es" class="h-full overflow-hidden">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -55,26 +55,21 @@
             font-family: 'Spline Sans', sans-serif;
             -webkit-tap-highlight-color: transparent;
             user-select: none;
-            overscroll-behavior-y: contain;
+            overscroll-behavior: none;
+            height: 100dvh; /* Dynamic viewport height para móviles */
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Animación suave para reordenamiento */
-        .widget-container {
-            transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
-        }
-        
-        .dragging {
-            opacity: 0.5;
-            transform: scale(1.05);
-            z-index: 50;
+        /* Asegurar que el contenido no se desplace bajo el teclado en formularios */
+        input:focus {
+            outline: none;
         }
 
-        .drop-target {
-            border: 2px dashed #FFEF0A;
-            border-radius: 3rem;
-        }
+        /* Soporte para dispositivos con notch */
+        .safe-top { padding-top: var(--sat); }
+        .safe-bottom { padding-bottom: var(--sab); }
+        .safe-pb-nav { padding-bottom: calc(var(--sab) + 80px); }
     </style>
 <script type="importmap">
 {

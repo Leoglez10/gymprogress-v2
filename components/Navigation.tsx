@@ -5,9 +5,10 @@ import { Screen } from '../types';
 interface NavigationProps {
   currentScreen: Screen;
   onNavigate: (screen: Screen) => void;
+  isVisible?: boolean;
 }
 
-const Navigation: React.FC<NavigationProps> = ({ currentScreen, onNavigate }) => {
+const Navigation: React.FC<NavigationProps> = ({ currentScreen, onNavigate, isVisible = true }) => {
   const navItems = [
     { screen: Screen.DASHBOARD, label: 'Inicio', icon: 'home' },
     { screen: Screen.EXERCISE_LIBRARY, label: 'Biblioteca', icon: 'fitness_center' },
@@ -16,7 +17,15 @@ const Navigation: React.FC<NavigationProps> = ({ currentScreen, onNavigate }) =>
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-black/5 dark:border-white/5 pt-3 flex justify-around items-center z-[80]" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+    <nav 
+      className={`fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-black/5 dark:border-white/5 pt-3 flex justify-around items-center z-[80] transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-[120%] opacity-0'
+      }`}
+      style={{ 
+        paddingBottom: 'calc(max(1rem, env(safe-area-inset-bottom)) + 4px)',
+        height: 'calc(80px + env(safe-area-inset-bottom))'
+      }}
+    >
       {navItems.map((item) => (
         <button
           key={item.screen}

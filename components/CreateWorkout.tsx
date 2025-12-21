@@ -21,6 +21,7 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addedFeedback, setAddedFeedback] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,7 +75,13 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
     };
     setSelectedExercises(prev => [...prev, newEntry]);
     setAddedFeedback(exercise.id);
-    setTimeout(() => setAddedFeedback(null), 1500);
+    setToastMessage(`¡${exercise.name} añadido!`);
+    
+    // Feedback táctil visual: el botón cambia y el toast aparece
+    setTimeout(() => {
+      setAddedFeedback(null);
+      setToastMessage(null);
+    }, 2000);
     
     setTimeout(() => {
       if (scrollRef.current) {
@@ -199,7 +206,9 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
         <div className="space-y-4">
           <div className="flex items-center justify-between px-6">
             <h3 className="font-black text-lg tracking-tight">Ejercicios</h3>
-            <span className="bg-primary/20 text-primary-text text-[10px] font-black px-3 py-1 rounded-full uppercase">{selectedExercises.length}</span>
+            <span className={`bg-primary text-black text-[10px] font-black px-3 py-1 rounded-full uppercase transition-all duration-300 ${toastMessage ? 'scale-125 rotate-3' : 'scale-100 rotate-0'}`}>
+              {selectedExercises.length}
+            </span>
           </div>
 
           {selectedExercises.length === 0 ? (
@@ -247,7 +256,6 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
                           <div className="flex items-center justify-between px-2">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Serie {setIdx + 1}</span>
                             <div className="flex items-center gap-2">
-                              {/* MEJORA: BOTÓN DUPLICAR SERIE - AHORA MÁS PREMIUM */}
                               <button 
                                 onClick={() => duplicateSet(exIdx, setIdx)} 
                                 title="Duplicar serie"
@@ -367,6 +375,17 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
       {showSelector && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xl flex items-end animate-in fade-in duration-300">
           <div onClick={() => { setShowSelector(false); setIsCreatingNew(false); }} className="absolute inset-0"></div>
+          
+          {/* TOAST NOTIFICATION */}
+          {toastMessage && (
+            <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[110] animate-in slide-in-from-top fade-in duration-300">
+              <div className="bg-primary text-black px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_10px_30px_rgba(255,239,10,0.4)] border border-white/20 font-black text-sm">
+                <span className="material-symbols-outlined text-xl">check_circle</span>
+                {toastMessage}
+              </div>
+            </div>
+          )}
+
           <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-500 relative">
             <div className="w-14 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-5 mb-2 opacity-50"></div>
             
@@ -419,16 +438,21 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
                   )}
 
                   {filteredLibrary.map((ex) => (
-                    <div key={ex.id} className="w-full flex items-center gap-6 p-5 rounded-[3rem] bg-slate-50 dark:bg-white/5 border border-black/5 shadow-sm">
+                    <div key={ex.id} className="w-full flex items-center gap-6 p-5 rounded-[3rem] bg-slate-50 dark:bg-white/5 border border-black/5 shadow-sm transition-all duration-300">
                       <div className="flex-1 min-w-0">
                         <p className="font-black text-xl leading-tight truncate">{ex.name}</p>
                         <p className="text-[11px] text-slate-400 uppercase font-black tracking-widest mt-1">{ex.muscleGroup}</p>
                       </div>
                       <button 
                         onClick={() => handleAddFromLibrary(ex)}
-                        className={`px-6 py-4 rounded-2xl font-black text-[11px] uppercase transition-all flex items-center gap-2 ${addedFeedback === ex.id ? 'bg-green-500 text-white' : 'bg-primary text-black'}`}
+                        className={`px-6 py-4 rounded-2xl font-black text-[11px] uppercase transition-all flex items-center gap-2 active:scale-125 ${addedFeedback === ex.id ? 'bg-green-500 text-white animate-wiggle' : 'bg-primary text-black'}`}
                       >
-                        {addedFeedback === ex.id ? 'AÑADIDO' : 'AÑADIR'}
+                        {addedFeedback === ex.id ? (
+                          <>
+                            <span className="material-symbols-outlined text-sm">done</span>
+                            AÑADIDO
+                          </>
+                        ) : 'AÑADIR'}
                       </button>
                     </div>
                   ))}
