@@ -1,29 +1,31 @@
 
 import React from 'react';
+import { InputField } from './Signup';
 
-interface SignupProps {
+interface LoginProps {
   onBack: () => void;
-  onSignup: () => void;
-  onLoginClick: () => void;
+  onLogin: () => void;
+  onSignupClick: () => void;
+  onForgotPasswordClick: () => void;
 }
 
-const Signup: React.FC<SignupProps> = ({ onBack, onSignup, onLoginClick }) => {
+const Login: React.FC<LoginProps> = ({ onBack, onLogin, onSignupClick, onForgotPasswordClick }) => {
   return (
     <div className="flex flex-col h-full bg-surface-light dark:bg-surface-dark font-display relative animate-in fade-in duration-500">
       <div className="flex items-center p-4 pb-2 justify-between">
         <button onClick={onBack} className="flex size-12 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors active:scale-90">
           <span className="material-symbols-outlined text-[24px]">arrow_back</span>
         </button>
-        <div className="text-sm font-black uppercase tracking-widest text-slate-400">Registrarse</div>
+        <div className="text-sm font-black uppercase tracking-widest text-slate-400">Iniciar Sesión</div>
         <div className="size-12"></div>
       </div>
 
       <div className="flex-1 flex flex-col px-6 overflow-y-auto pb-8 no-scrollbar">
         <div className="pt-4 pb-2">
-          <h1 className="text-slate-900 dark:text-white tracking-tight text-[32px] font-bold leading-[1.1]">Hecho para la constancia.</h1>
+          <h1 className="text-slate-900 dark:text-white tracking-tight text-[32px] font-bold leading-[1.1]">Bienvenido de nuevo.</h1>
         </div>
         <div className="pb-8">
-          <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-relaxed">Entrena, analiza tu forma y mantente libre de lesiones. Únete a la comunidad hoy.</p>
+          <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-relaxed">Tu progreso te está esperando. Retoma tus rutinas donde las dejaste.</p>
         </div>
 
         <div className="space-y-3">
@@ -39,25 +41,34 @@ const Signup: React.FC<SignupProps> = ({ onBack, onSignup, onLoginClick }) => {
 
         <div className="flex items-center py-6">
           <div className="h-px flex-1 bg-black/10 dark:bg-white/10"></div>
-          <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">O con email</span>
+          <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">O inicia con email</span>
           <div className="h-px flex-1 bg-black/10 dark:bg-white/10"></div>
         </div>
 
-        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); onSignup(); }}>
-          <InputField label="Nombre Completo" placeholder="Tu nombre" icon="person" type="text" />
+        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); onLogin(); }}>
           <InputField label="Correo Electrónico" placeholder="tu@email.com" icon="mail" type="email" />
-          <InputField label="Contraseña" placeholder="Crea una contraseña" icon="visibility" type="password" />
+          <InputField label="Contraseña" placeholder="Tu contraseña" icon="visibility" type="password" />
+
+          <div className="flex justify-end pr-1">
+            <button 
+              type="button" 
+              onClick={onForgotPasswordClick}
+              className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest active:scale-95 transition-all hover:opacity-70"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
 
           <div className="pt-4">
             <button className="w-full rounded-full bg-primary py-4 px-6 text-[#181811] text-base font-black shadow-xl shadow-primary/20 active:scale-[0.98] transition-all uppercase tracking-widest" type="submit">
-              Crear Cuenta
+              Entrar
             </button>
           </div>
         </form>
 
         <div className="pt-6 text-center">
           <p className="text-sm text-slate-500 font-medium">
-            ¿Ya eres miembro? <button onClick={onLoginClick} className="font-black text-slate-900 dark:text-white ml-1 active:scale-95 transition-all">Inicia Sesión</button>
+            ¿No tienes cuenta? <button onClick={onSignupClick} className="font-black text-slate-900 dark:text-white ml-1 active:scale-95 transition-all">Regístrate gratis</button>
           </p>
         </div>
       </div>
@@ -65,18 +76,4 @@ const Signup: React.FC<SignupProps> = ({ onBack, onSignup, onLoginClick }) => {
   );
 };
 
-export const InputField: React.FC<{ label: string; placeholder: string; icon: string; type: string }> = ({ label, placeholder, icon, type }) => (
-  <div className="space-y-1.5">
-    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{label}</label>
-    <div className="relative">
-      <input 
-        className="w-full rounded-2xl border-0 bg-background-light dark:bg-background-dark py-4 px-5 text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/5 font-bold" 
-        placeholder={placeholder} 
-        type={type} 
-      />
-      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">{icon}</span>
-    </div>
-  </div>
-);
-
-export default Signup;
+export default Login;

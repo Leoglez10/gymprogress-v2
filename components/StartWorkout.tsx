@@ -9,15 +9,6 @@ interface StartWorkoutProps {
   onStartFree: () => void;
 }
 
-const DEFAULT_ROUTINE: CustomRoutine = {
-  id: 'recommended_1',
-  name: 'Poder Tren Superior',
-  exercises: [
-    { exerciseId: '1', name: 'Press de Banca', sets: [{ weight: 60, reps: 10 }, { weight: 60, reps: 10 }, { weight: 65, reps: 8 }] },
-    { exerciseId: '2', name: 'Press Militar', sets: [{ weight: 40, reps: 10 }, { weight: 40, reps: 10 }] }
-  ]
-};
-
 const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onCreateCustom, onStartFree }) => {
   const [customRoutines, setCustomRoutines] = useState<CustomRoutine[]>([]);
   const [routineToDelete, setRoutineToDelete] = useState<string | null>(null);
@@ -49,7 +40,7 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
         <h1 className="text-4xl font-black tracking-tighter leading-none">¿Qué quieres hacer?</h1>
       </div>
 
-      <main className="px-4 space-y-6 pt-4">
+      <main className="px-4 space-y-4 pt-4">
         {/* MODO 1: SESIÓN LIBRE */}
         <section 
           onClick={onStartFree}
@@ -68,36 +59,24 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
           </div>
         </section>
 
-        {/* GRID DE OPCIONES SECUNDARIAS */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* RECOMENDADO */}
-          <button 
-            onClick={() => onSessionStart(DEFAULT_ROUTINE)}
-            className="flex flex-col bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group"
-          >
-            <div className="size-14 rounded-2xl bg-orange-100 dark:bg-orange-950/30 text-orange-500 flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform">
-              <span className="material-symbols-outlined text-3xl fill-1">auto_awesome</span>
-            </div>
-            <h4 className="font-black text-xl leading-tight tracking-tight">Rutina<br/>Poder</h4>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Sugerida</p>
-          </button>
-
-          {/* CREAR NUEVO */}
-          <button 
-            onClick={() => onCreateCustom()}
-            className="flex flex-col bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"
-          >
-            <div className="absolute -right-2 -top-2 size-12 bg-primary/5 rounded-full blur-xl group-hover:bg-primary/20 transition-all"></div>
-            <div className="size-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/30 text-indigo-500 flex items-center justify-center mb-4 group-hover:-rotate-6 transition-transform shadow-inner">
-              <span className="material-symbols-outlined text-3xl fill-1">playlist_add</span>
-            </div>
-            <h4 className="font-black text-xl leading-tight tracking-tight">Nueva<br/>Rutina</h4>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2 leading-tight">Diseña tu plan a medida</p>
-          </button>
-        </div>
+        {/* CREAR NUEVO - Ahora a ancho completo */}
+        <button 
+          onClick={() => onCreateCustom()}
+          className="w-full flex items-center gap-6 bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"
+        >
+          <div className="absolute -right-2 -top-2 size-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/20 transition-all"></div>
+          <div className="size-16 rounded-2xl bg-indigo-100 dark:bg-indigo-950/30 text-indigo-500 flex items-center justify-center group-hover:-rotate-6 transition-transform shadow-inner shrink-0">
+            <span className="material-symbols-outlined text-4xl fill-1">playlist_add</span>
+          </div>
+          <div className="flex-1">
+            <h4 className="font-black text-xl leading-tight tracking-tight">Nueva Rutina</h4>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 leading-tight">Diseña tu plan a medida desde cero</p>
+          </div>
+          <span className="material-symbols-outlined text-slate-200 group-hover:text-primary transition-colors">chevron_right</span>
+        </button>
 
         {/* LISTA DE MIS RUTINAS */}
-        <section className="pt-4">
+        <section className="pt-6">
           <div className="flex items-center justify-between px-2 mb-4">
             <h2 className="text-xl font-black tracking-tight">Mis Rutinas Guardadas</h2>
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full">{customRoutines.length}</span>

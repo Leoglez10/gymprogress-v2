@@ -31,15 +31,6 @@
                         "body": ["Noto Sans", "sans-serif"],
                     },
                     borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-                    animation: {
-                        'wiggle': 'wiggle 0.25s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        wiggle: {
-                            '0%, 100%': { transform: 'rotate(-0.5deg)' },
-                            '50%': { transform: 'rotate(0.5deg)' },
-                        }
-                    }
                 },
             },
         }
@@ -56,29 +47,63 @@
             -webkit-tap-highlight-color: transparent;
             user-select: none;
             overscroll-behavior: none;
-            height: 100dvh; /* Dynamic viewport height para móviles */
+            height: 100dvh;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Asegurar que el contenido no se desplace bajo el teclado en formularios */
-        input:focus {
-            outline: none;
+        /* Animación de Gradiente Fluido - Optimizada */
+        @keyframes gradient-rotate {
+            0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+            50% { background-position: 100% 50%; filter: hue-rotate(15deg); }
+            100% { background-position: 0% 50%; filter: hue-rotate(0deg); }
         }
 
-        /* Soporte para dispositivos con notch */
+        .animate-profile-ring {
+            background: linear-gradient(45deg, #FFEF0A, #60a5fa, #FFEF0A, #3b82f6);
+            background-size: 300% 300%;
+            animation: gradient-rotate 6s ease-in-out infinite;
+        }
+
+        /* Accesibilidad: Reducción de Movimiento */
+        .reduced-motion *, .reduced-motion *::before, .reduced-motion *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+
+        /* Accesibilidad: Alto Contraste */
+        .high-contrast {
+            --primary: #FFEF00;
+            --background-light: #ffffff;
+            --background-dark: #000000;
+            --surface-dark: #111111;
+        }
+        
+        /* Accesibilidad: Botones Resaltados */
+        .highlighted-buttons button, 
+        .highlighted-buttons [role="button"],
+        .highlighted-buttons .interactive-element {
+            border: 3px solid currentColor !important;
+            box-shadow: 0 4px 0 0 rgba(0,0,0,0.2) !important;
+        }
+        .dark.highlighted-buttons button, 
+        .dark.highlighted-buttons [role="button"] {
+            box-shadow: 0 4px 0 0 rgba(255,255,255,0.1) !important;
+        }
+
         .safe-top { padding-top: var(--sat); }
         .safe-bottom { padding-bottom: var(--sab); }
-        .safe-pb-nav { padding-bottom: calc(var(--sab) + 80px); }
     </style>
 <script type="importmap">
 {
   "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "recharts": "https://esm.sh/recharts@^3.6.0"
   }
 }
 </script>

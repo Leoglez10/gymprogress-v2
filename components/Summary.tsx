@@ -15,22 +15,39 @@ const Summary: React.FC<SummaryProps> = ({ onDone, userProfile }) => {
   useEffect(() => {
     const vol = parseInt(localStorage.getItem('gymProgress_last_session_volume') || '0');
     const dur = parseInt(localStorage.getItem('gymProgress_last_session_duration') || '0');
+    const rawData = localStorage.getItem('gymProgress_last_session_data');
+    const sessionData = rawData ? JSON.parse(rawData) : null;
+    
     setStats({ volume: vol, duration: dur });
 
     const saved = localStorage.getItem('gymProgress_workout_history');
     const history = saved ? JSON.parse(saved) : [];
     
+    // Normalizar datos de ejercicios antes de guardar
+    const normalizedExercises = (sessionData?.exercises || []).map((ex: any) => ({
+      ...ex,
+      exerciseId: String(ex.exerciseId), // Asegurar ID string para vinculación
+      sets: (ex.sets || []).map((s: any) => ({
+        ...s,
+        completed: !!s.completed, // Booleano explícito
+        weight: Number(s.weight) || 0,
+        reps: Number(s.reps) || 0
+      }))
+    }));
+
     const newRecord = {
-      id: Date.now().toString(),
+      id: String(Date.now()),
       date: new Date().toISOString(),
       volume: vol,
       duration: `${Math.floor(dur / 60)}m`,
-      unit: userProfile.weightUnit
+      unit: userProfile.weightUnit,
+      name: sessionData?.name || "Sesión de Entrenamiento",
+      exercises: normalizedExercises
     };
 
     localStorage.setItem('gymProgress_workout_history', JSON.stringify([...history, newRecord]));
     localStorage.removeItem('gymProgress_last_session_data');
-  }, []);
+  }, [userProfile.weightUnit]);
 
   const handleTouchStart = (e: React.TouchEvent) => { touchStartRef.current = e.touches[0].clientY; };
   const handleTouchMove = (e: React.TouchEvent) => {

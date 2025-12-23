@@ -2,6 +2,8 @@
 export enum Screen {
   ONBOARDING = 'ONBOARDING',
   SIGNUP = 'SIGNUP',
+  LOGIN = 'LOGIN',
+  FORGOT_PASSWORD = 'FORGOT_PASSWORD',
   GOAL_SELECTION = 'GOAL_SELECTION',
   BODY_DATA = 'BODY_DATA',
   ALIAS_SETTING = 'ALIAS_SETTING',
@@ -26,28 +28,35 @@ export interface GoalSettings {
 }
 
 export interface UserProfile {
-  goal: 'Strength' | 'Hypertrophy' | 'WeightLoss' | '';
-  gender: 'Male' | 'Female' | '';
+  goal: string;
+  gender: string;
   age: number;
   weight: number;
   height: number;
   alias: string;
-  goalSettings: GoalSettings;
+  avatarUrl?: string;
   weightUnit: 'kg' | 'lb';
+  goalSettings: GoalSettings;
 }
 
-export interface Exercise {
-  id: string;
-  name: string;
-  muscleGroup: string;
-  type: 'Strength' | 'Cardio' | 'Stretching' | 'Compound' | 'Bodyweight';
-  thumbnail: string;
+export interface WellnessEntry {
+  date: string;
+  sleep: number; // 1-3 (Pobre, Normal, Excelente)
+  energy: number; // 1-3
+  stress: number; // 1-3
+  soreness: number; // 1-3
+}
+
+export interface Set {
+  weight: number;
+  reps: number;
+  completed?: boolean;
 }
 
 export interface CustomExerciseEntry {
   exerciseId: string;
   name: string;
-  sets: { reps: number; weight: number; completed?: boolean }[];
+  sets: Set[];
 }
 
 export interface CustomRoutine {
@@ -56,17 +65,15 @@ export interface CustomRoutine {
   exercises: CustomExerciseEntry[];
 }
 
-export interface WorkoutSet {
-  weight: number;
-  reps: number;
-  completed: boolean;
-}
-
-export interface CurrentWorkout {
+export interface Exercise {
   id: string;
   name: string;
-  exercises: {
-    exerciseId: string;
-    sets: WorkoutSet[];
-  }[];
+  muscleGroup: string;
+  category: 'Push' | 'Pull' | 'Legs' | 'Core';
+  type: string;
+  thumbnail: string;
+  difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
+  equipment: 'Mancuernas' | 'Barra' | 'Polea' | 'Peso Corporal' | 'Máquina';
+  isFavorite?: boolean;
+  lastWeight?: number;
 }

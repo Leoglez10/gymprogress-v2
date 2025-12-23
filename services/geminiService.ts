@@ -1,25 +1,34 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { UserProfile } from "../types";
+import { UserProfile, WellnessEntry } from "../types";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const getTrainingSuggestions = async (acwrScore: number, profile: UserProfile): Promise<string> => {
+export const getTrainingSuggestions = async (
+  acwrScore: number, 
+  profile: UserProfile, 
+  wellness?: WellnessEntry
+): Promise<string> => {
   const ai = getAI();
+  
+  const wellnessContext = wellness 
+    ? `- Bienestar: Sueño(${wellness.sleep}/3), Energía(${wellness.energy}/3), Estrés(${wellness.stress}/3), Agujetas(${wellness.soreness}/3)`
+    : "- Bienestar: No registrado hoy.";
+
   const prompt = `
-    Actúa como un entrenador personal de alto rendimiento.
+    Actúa como un entrenador personal y fisioterapeuta de alto rendimiento.
     Mi puntuación ACWR (Acute:Chronic Workload Ratio) actual es ${acwrScore}.
     
+    Contexto de Salud hoy:
+    ${wellnessContext}
+
     Datos del perfil:
     - Alias: ${profile.alias}
     - Objetivo: ${profile.goal}
-    - Género: ${profile.gender}
-    - Edad: ${profile.age}
-    - Peso: ${profile.weight}kg
-    - Altura: ${profile.height}cm
+    - Edad: ${profile.age} años
     
-    Basado en este puntaje ACWR (donde 0.8-1.3 es óptimo, <0.8 es desentrenamiento y >1.5 es riesgo alto de lesión) y mi perfil, ¿qué ajustes específicos me sugerirías para mi entrenamiento esta semana? 
-    Responde en español de forma motivadora, concisa y profesional (máximo 3-4 frases).
+    Basado en el ACWR (0.8-1.3 óptimo, >1.5 riesgo alto) y mi estado de bienestar, ¿qué ajustes específicos me sugerirías para mi entrenamiento HOY? 
+    Responde en español de forma motivadora, concisa y técnica. Máximo 3 frases.
   `;
 
   const response = await ai.models.generateContent({
@@ -52,6 +61,41 @@ export const getVolumeInsight = async (currentVolume: number, prevVolume: number
   });
   
   return response.text || "Tu volumen indica un trabajo constante. Sigue así para ver resultados.";
+};
+
+/**
+ * Calcula volumen ideal desde cero basado en biometría con máxima precisión
+ */
+export const getTargetVolumeRecommendation = async (profile: UserProfile): Promise<string> => {
+  const ai = getAI();
+  
+  const prompt = `
+    Actúa como un PhD en Ciencias del Deporte experto en hipertrofia y fuerza. 
+    Tu misión es dar una recomendación MATEMÁTICA EXACTA de volumen semanal.
+    
+    PERFIL DEL ATLETA:
+    - Peso: ${profile.weight} ${profile.weightUnit}
+    - Objetivo: ${profile.goal} (Strength=Fuerza, Hypertrophy=Hipertrofia, WeightLoss=Quema grasa)
+    - Edad: ${profile.age} años
+    - Género: ${profile.gender}
+
+    INSTRUCCIONES DE CÁLCULO:
+    1. Si es Hipertrofia: Recomienda un volumen de 150x a 250x su peso corporal en KG totales semanales.
+    2. Si es Fuerza: Recomienda 100x a 150x su peso, pero con intensidades muy altas.
+    3. Si es Quema de Grasa: Recomienda un volumen moderado-alto (180x peso) para preservar músculo.
+
+    FORMATO DE RESPUESTA OBLIGATORIO (en español):
+    - Comienza SIEMPRE con: "Viendo tus datos de ${profile.weight}kg y tu meta de ${profile.goal}, te recomiendo configurar tu meta en [CIFRA EXACTA] ${profile.weightUnit}."
+    - Luego da una breve explicación técnica (máximo 2 frases) sobre el volumen de mantenimiento (MV) y el volumen máximo recuperable (MRV) para su caso.
+    - Sé directo y ultra-profesional.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: prompt
+  });
+
+  return response.text || `Basado en tu peso de ${profile.weight}${profile.weightUnit}, un punto de partida óptimo son ${(profile.weight * 200).toLocaleString()} ${profile.weightUnit} semanales.`;
 };
 
 export const getWeeklyVolumeSummary = async (totalVolume: number, muscleDist: any[]): Promise<string> => {

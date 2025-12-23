@@ -1,27 +1,34 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, AreaChart, Area } from 'recharts';
+import { Exercise, UserProfile } from '../types';
 
 interface StatsProps {
   onBack: () => void;
+  userProfile: UserProfile;
 }
 
-const Stats: React.FC<StatsProps> = ({ onBack }) => {
+const Stats: React.FC<StatsProps> = ({ onBack, userProfile }) => {
   const [history, setHistory] = useState<any[]>([]);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('gymProgress_workout_history');
-    if (saved) {
-      const parsed = JSON.parse(saved);
+    const savedHistory = localStorage.getItem('gymProgress_workout_history');
+    const savedLibrary = localStorage.getItem('gymProgress_exercises');
+    
+    if (savedLibrary) setExerciseLibrary(JSON.parse(savedLibrary));
+
+    if (savedHistory) {
+      const parsed = JSON.parse(savedHistory);
       setHistory(parsed);
       
       if (parsed.length > 0) {
         for (const session of parsed) {
           if (session.exercises && session.exercises.length > 0) {
-            setSelectedExerciseId(session.exercises[0].exerciseId);
+            setSelectedExerciseId(String(session.exercises[0].exerciseId));
             break;
           }
         }
@@ -34,8 +41,9 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
     history.forEach(session => {
       if (session.exercises) {
         session.exercises.forEach((ex: any) => {
-          if (!map.has(ex.exerciseId)) {
-            map.set(ex.exerciseId, { id: ex.exerciseId, name: ex.name });
+          const idStr = String(ex.exerciseId);
+          if (!map.has(idStr)) {
+            map.set(idStr, { id: idStr, name: ex.name });
           }
         });
       }
@@ -50,7 +58,7 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
     
     sortedHistory.forEach(session => {
       if (session.exercises) {
-        const exerciseSession = session.exercises.find((ex: any) => ex.exerciseId === selectedExerciseId);
+        const exerciseSession = session.exercises.find((ex: any) => String(ex.exerciseId) === selectedExerciseId);
         if (exerciseSession && exerciseSession.sets) {
           const maxWeight = Math.max(...exerciseSession.sets.map((s: any) => s.weight || 0));
           if (maxWeight > 0) {
@@ -79,13 +87,12 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
     return { start, current, diff, percent };
   }, [prProgression]);
 
-  // Lógica del Calendario
   const calendarDays = useMemo(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const adjustedFirstDay = (firstDay + 6) % 7; // Empezar en Lunes
+    const adjustedFirstDay = (firstDay + 6) % 7; 
     
     const days = [];
     for (let i = 0; i < adjustedFirstDay; i++) days.push(null);
@@ -102,30 +109,67 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
     setSelectedDay(null);
   };
 
-  const volumeData = [
-    { month: 'Ene', volume: 45000 },
-    { month: 'Feb', volume: 52000 },
-    { month: 'Mar', volume: 48000 },
-    { month: 'Abr', volume: 61000 },
-    { month: 'May', volume: 55000 },
-    { month: 'Jun', volume: 67000 },
-  ];
+  const volumeData = useMemo(() => {
+    const last6Months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const label = d.toLocaleDateString('es-ES', { month: 'short' });
+      const vol = history
+        .filter(h => new Date(h.date).getMonth() === d.getMonth() && new Date(h.date).getFullYear() === d.getFullYear())
+        .reduce((acc, curr) => acc + (Number(curr.volume) || 0), 0);
+      last6Months.push({ month: label.charAt(0).toUpperCase() + label.slice(1), volume: vol || 100 });
+    }
+    return last6Months;
+  }, [history]);
 
-  const muscleData = [
-    { name: 'Pecho', value: 30, color: '#FFEF0A' },
-    { name: 'Espalda', value: 25, color: '#E6D709' },
-    { name: 'Piernas', value: 20, color: '#CCBF08' },
-    { name: 'Hombros', value: 15, color: '#B3A707' },
-    { name: 'Otros', value: 10, color: '#998F06' },
-  ];
+  const muscleData = useMemo(() => {
+    const muscleTotals: Record<string, number> = {};
+    let totalAllVolume = 0;
+
+    const libraryMap: Record<string, string> = {};
+    exerciseLibrary.forEach(ex => { libraryMap[String(ex.id)] = ex.muscleGroup; });
+
+    history.forEach(session => {
+      session.exercises?.forEach((ex: any) => {
+        const muscle = ex.muscleGroup || libraryMap[String(ex.exerciseId)] || 'Otros';
+        const vol = (ex.sets || []).reduce((acc: number, s: any) => acc + (Number(s.weight) * Number(s.reps) || 0), 0);
+        
+        if (vol > 0) {
+          muscleTotals[muscle] = (muscleTotals[muscle] || 0) + vol;
+          totalAllVolume += vol;
+        }
+      });
+    });
+
+    if (totalAllVolume === 0) {
+      return [{ name: 'Sin Datos', value: 100, color: '#f1f5f9' }];
+    }
+
+    const colors = ['#FFEF0A', '#E6D709', '#CCBF08', '#B3A707', '#998F06', '#807705'];
+    return Object.entries(muscleTotals)
+      .map(([name, value], index) => ({
+        name,
+        value: Math.round((value / totalAllVolume) * 100),
+        color: colors[index % colors.length]
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  }, [history, exerciseLibrary]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark pb-32 animate-in fade-in duration-500">
-      <header className="flex items-center justify-between p-4 sticky top-0 z-50 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md border-b border-black/5 pt-[env(safe-area-inset-top)]">
-        <button onClick={onBack} className="flex size-11 items-center justify-center rounded-full hover:bg-black/5 transition-all">
+      <header 
+        className="flex items-center justify-between px-4 sticky top-0 z-50 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md border-b border-black/5 dark:border-white/5"
+        style={{ 
+          paddingTop: 'calc(max(1rem, env(safe-area-inset-top)) + 0.5rem)',
+          paddingBottom: '0.75rem'
+        }}
+      >
+        <button onClick={onBack} className="flex size-11 items-center justify-center rounded-full active:bg-black/5 dark:active:bg-white/10 transition-all">
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
-        <h2 className="text-lg font-bold">Análisis Pro</h2>
+        <h2 className="text-lg font-black tracking-tight flex-1 text-center">Análisis Pro</h2>
         <div className="size-11"></div>
       </header>
 
@@ -182,7 +226,7 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
                       <div className="size-10 rounded-xl bg-primary flex items-center justify-center text-black"><span className="material-symbols-outlined text-xl">fitness_center</span></div>
                       <div>
                         <p className="text-sm font-black">{w.name || 'Sesión de Entrenamiento'}</p>
-                        <p className="text-[10px] font-bold text-slate-400">{w.duration} • {w.volume.toLocaleString()} kg</p>
+                        <p className="text-[10px] font-bold text-slate-400">{w.duration} • {w.volume.toLocaleString()} {userProfile.weightUnit}</p>
                       </div>
                     </div>
                     <span className="material-symbols-outlined text-slate-300">chevron_right</span>
@@ -223,7 +267,7 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
             <div className="flex justify-between items-start mb-8">
               <div>
                 <h4 className="text-lg font-black tracking-tight leading-tight">{selectedExerciseName}</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Historial de peso máximo</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Historial de peso máximo ({userProfile.weightUnit})</p>
               </div>
               {statsSummary && (
                 <div className="text-right">
@@ -257,7 +301,7 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
                         if (active && payload && payload.length) {
                           return (
                             <div className="bg-black text-white px-4 py-2 rounded-2xl text-[12px] font-black shadow-2xl border border-white/10">
-                              {payload[0].value} kg
+                              {payload[0].value} {userProfile.weightUnit}
                             </div>
                           );
                         }
@@ -288,20 +332,20 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
               <div className="mt-8 grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 dark:bg-background-dark/50 p-4 rounded-2xl border border-black/5">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Peso Inicial</p>
-                  <p className="text-xl font-black">{statsSummary.start} kg</p>
+                  <p className="text-xl font-black">{statsSummary.start} {userProfile.weightUnit}</p>
                 </div>
                 <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
                   <p className="text-[9px] font-black text-primary-text uppercase tracking-widest mb-1">Ganancia Neta</p>
-                  <p className="text-xl font-black text-primary-text">+{statsSummary.diff} kg</p>
+                  <p className="text-xl font-black text-primary-text">+{statsSummary.diff} {userProfile.weightUnit}</p>
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* VOLUMEN MENSUAL */}
+        {/* VOLUMEN MENSUAL DINÁMICO */}
         <div className="bg-white dark:bg-surface-dark p-7 rounded-[2.5rem] shadow-sm border border-black/5">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 mb-6 tracking-widest">Volumen Mensual (kg)</h3>
+          <h3 className="text-[10px] font-black uppercase text-slate-400 mb-6 tracking-widest">Volumen Mensual ({userProfile.weightUnit})</h3>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={volumeData}>
@@ -321,7 +365,7 @@ const Stats: React.FC<StatsProps> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* DISTRIBUCIÓN MUSCULAR */}
+        {/* DISTRIBUCIÓN MUSCULAR REAL */}
         <div className="bg-white dark:bg-surface-dark p-7 rounded-[2.5rem] shadow-sm border border-black/5">
           <h3 className="text-[10px] font-black uppercase text-slate-400 mb-6 tracking-widest">Distribución Muscular</h3>
           <div className="flex items-center gap-6">

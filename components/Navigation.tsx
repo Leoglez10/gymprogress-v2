@@ -11,8 +11,9 @@ interface NavigationProps {
 const Navigation: React.FC<NavigationProps> = ({ currentScreen, onNavigate, isVisible = true }) => {
   const navItems = [
     { screen: Screen.DASHBOARD, label: 'Inicio', icon: 'home' },
-    { screen: Screen.EXERCISE_LIBRARY, label: 'Biblioteca', icon: 'fitness_center' },
-    { screen: Screen.RISK_ANALYSIS, label: 'Riesgo', icon: 'ecg_heart' },
+    { screen: Screen.STATS, label: 'Análisis', icon: 'monitoring' },
+    { screen: Screen.EXERCISE_LIBRARY, label: 'Ejercicios', icon: 'fitness_center' },
+    { screen: Screen.RISK_ANALYSIS, label: 'Salud', icon: 'ecg_heart' },
     { screen: Screen.PROFILE, label: 'Perfil', icon: 'person' },
   ];
 
@@ -31,16 +32,16 @@ const Navigation: React.FC<NavigationProps> = ({ currentScreen, onNavigate, isVi
           key={item.screen}
           onClick={() => onNavigate(item.screen)}
           aria-label={item.label}
-          className={`flex flex-col items-center justify-center gap-1 min-w-[64px] min-h-[48px] transition-all active:scale-90 ${
+          className={`flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] transition-all active:scale-90 ${
             currentScreen === item.screen
               ? 'text-slate-950 dark:text-white'
               : 'text-slate-400 dark:text-slate-500'
           }`}
         >
-          <span className={`material-symbols-outlined text-[28px] ${currentScreen === item.screen ? 'fill-1 font-bold' : ''}`}>
+          <span className={`material-symbols-outlined text-[26px] ${currentScreen === item.screen ? 'fill-1 font-bold text-primary' : ''}`}>
             {item.icon}
           </span>
-          <span className={`text-[10px] tracking-tight ${currentScreen === item.screen ? 'font-black' : 'font-bold'}`}>
+          <span className={`text-[9px] tracking-tight ${currentScreen === item.screen ? 'font-black' : 'font-bold'}`}>
             {item.label}
           </span>
         </button>
