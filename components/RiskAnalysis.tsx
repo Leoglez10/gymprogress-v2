@@ -106,7 +106,7 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
   }, [workloadStats.acwr]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark pb-40 animate-in fade-in duration-500">
+    <div className="flex flex-col min-h-full bg-background-light dark:bg-background-dark animate-in fade-in duration-500">
       <header className="flex items-center justify-between p-6 sticky top-0 z-50 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-xl border-b border-black/5 dark:border-white/5 pt-[calc(max(1rem,env(safe-area-inset-top))+0.75rem)]">
         <button onClick={onBack} className="flex size-11 items-center justify-center rounded-2xl bg-white dark:bg-white/5 text-slate-500 active:scale-90 transition-all border border-black/5">
           <span className="material-symbols-outlined text-2xl font-black">arrow_back</span>
@@ -118,14 +118,14 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
         <div className="size-11"></div>
       </header>
 
-      <main className="flex-1 px-5 py-6 space-y-10 overflow-y-auto no-scrollbar">
+      <main className="flex-1 px-5 py-6 space-y-10">
         
         {/* PANEL DE CONTROL ACWR */}
         <section className="bg-white dark:bg-surface-dark rounded-[3.5rem] p-8 shadow-xl border border-black/5 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 flex gap-2">
              <button 
                 onClick={() => setActiveHelp('acwr')}
-                className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center active:scale-90 transition-all border border-primary/20"
+                className="size-10 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500 flex items-center justify-center active:scale-90 transition-all border border-black/5 dark:border-white/5"
              >
                 <span className="material-symbols-outlined text-xl font-black">help</span>
              </button>
@@ -235,7 +235,7 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
           </div>
         </section>
 
-        {/* IA COACH INSIGHTS REDISEÑADO */}
+        {/* IA COACH INSIGHTS */}
         <section className="bg-black dark:bg-zinc-900 rounded-[3.5rem] p-10 text-white relative overflow-hidden shadow-2xl border border-white/5">
           <div className="absolute -right-16 -top-16 size-48 bg-primary/10 blur-[80px] rounded-full"></div>
           
@@ -283,6 +283,8 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
           </div>
         </section>
 
+        {/* ESPACIADOR FINAL PARA EVITAR CORTE VISUAL CON LA NAV BAR */}
+        <div className="h-32 w-full"></div>
       </main>
 
       {/* MODAL DE AYUDA UNIFICADO */}

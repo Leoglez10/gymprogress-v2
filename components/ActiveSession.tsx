@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CustomRoutine, Exercise, CustomExerciseEntry, UserProfile } from '../types';
+import { getMuscleDefaultImage } from './ExerciseLibrary';
 
 interface ActiveSessionProps {
   routine: CustomRoutine | null;
@@ -152,7 +153,6 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
     setSearchTerm('');
   };
 
-  // Función para cambiar categoría y asegurar músculo válido en creación rápida
   const handleNewCategoryChange = (newCat: any) => {
     const validMuscles = CATEGORY_MUSCLE_MAP[newCat];
     const isCurrentMuscleValid = validMuscles.includes(newExerciseMuscle);
@@ -170,7 +170,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
       difficulty: 'Principiante',
       equipment: 'Peso Corporal',
       type: 'Strength',
-      thumbnail: ''
+      thumbnail: getMuscleDefaultImage(newExerciseMuscle) // Imagen por defecto profesional siempre
     };
     const updatedLibrary = [newEx, ...library];
     setLibrary(updatedLibrary);

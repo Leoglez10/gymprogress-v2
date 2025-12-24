@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { UserProfile, CustomRoutine, Exercise } from '../types';
 import { NumberInput } from './BodyData';
+import { getTargetVolumeRecommendation } from '../services/geminiService';
 
 interface ProfileProps {
   onBack: () => void;
@@ -17,6 +18,12 @@ interface ProfileProps {
   };
 }
 
+const VALID_LIMITS = {
+  age: { min: 12, max: 100 },
+  weight: { min: 30, max: 350 },
+  height: { min: 100, max: 250 }
+};
+
 const PRESET_AVATARS = [
   "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=400&auto=format&fit=crop",
   "https://images.unsplash.com/photo-1594381898411-846e7d193883?q=80&w=400&auto=format&fit=crop",
@@ -31,10 +38,61 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
+  
+  const [showWeightSuggestion, setShowWeightSuggestion] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
+  const [recommendedVolume, setRecommendedVolume] = useState<number | null>(null);
 
-  const handleSave = () => {
-    onUpdateProfile(editForm);
+  const isFormValid = 
+    editForm.age >= VALID_LIMITS.age.min && editForm.age <= VALID_LIMITS.age.max &&
+    editForm.weight >= VALID_LIMITS.weight.min && editForm.weight <= VALID_LIMITS.weight.max &&
+    editForm.height >= VALID_LIMITS.height.min && editForm.height <= VALID_LIMITS.height.max &&
+    editForm.alias.trim().length > 0;
+
+  const handleSaveAttempt = () => {
+    if (!isFormValid) return;
+    
+    if (editForm.weight !== userProfile.weight) {
+      setShowWeightSuggestion(true);
+    } else {
+      onUpdateProfile(editForm);
+      setIsEditing(false);
+    }
+  };
+
+  const handleFinalSave = (newVolume?: number) => {
+    const finalProfile = {
+      ...editForm,
+      goalSettings: {
+        ...editForm.goalSettings,
+        targetVolumePerWeek: newVolume !== undefined ? newVolume : editForm.goalSettings.targetVolumePerWeek
+      }
+    };
+    onUpdateProfile(finalProfile);
     setIsEditing(false);
+    setShowWeightSuggestion(false);
+    setAiResult(null);
+    setRecommendedVolume(null);
+  };
+
+  const handleAskAI = async () => {
+    setAiLoading(true);
+    try {
+      const response = await getTargetVolumeRecommendation(editForm);
+      setAiResult(response);
+      
+      const allNumbers = response.match(/\d+[\d,.]*/g);
+      if (allNumbers) {
+        const numbers = allNumbers.map(n => parseFloat(n.replace(/[,.]/g, '')));
+        const volumeCandidate = numbers.find(n => n > 500) || numbers[numbers.length - 1];
+        if (volumeCandidate) setRecommendedVolume(volumeCandidate);
+      }
+    } catch (e) {
+      setAiResult("No pude conectar con el Coach IA. Basado en tu nuevo peso, te sugiero ajustar tu volumen.");
+      setRecommendedVolume(editForm.weight * 200);
+    }
+    setAiLoading(false);
   };
 
   const handleAvatarSelect = (url: string) => {
@@ -48,10 +106,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
       setShowUnitModal(false);
       return;
     }
-
     const factor = newUnit === 'lb' ? 2.20462 : 0.453592;
-    
-    // 1. Convertir datos del perfil
     const updatedProfile: UserProfile = {
       ...userProfile,
       weightUnit: newUnit,
@@ -61,61 +116,12 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
         targetVolumePerWeek: Math.round(userProfile.goalSettings.targetVolumePerWeek * factor)
       }
     };
-
-    // 2. Convertir historial de entrenamientos
-    const savedHistory = localStorage.getItem('gymProgress_workout_history');
-    if (savedHistory) {
-      const history = JSON.parse(savedHistory);
-      const convertedHistory = history.map((session: any) => ({
-        ...session,
-        volume: Math.round(session.volume * factor),
-        unit: newUnit,
-        exercises: session.exercises.map((ex: any) => ({
-          ...ex,
-          sets: ex.sets.map((s: any) => ({
-            ...s,
-            weight: parseFloat((s.weight * factor).toFixed(1))
-          }))
-        }))
-      }));
-      localStorage.setItem('gymProgress_workout_history', JSON.stringify(convertedHistory));
-    }
-
-    // 3. Convertir rutinas personalizadas
-    const savedRoutines = localStorage.getItem('gymProgress_custom_routines');
-    if (savedRoutines) {
-      const routines = JSON.parse(savedRoutines);
-      const convertedRoutines = routines.map((routine: CustomRoutine) => ({
-        ...routine,
-        exercises: routine.exercises.map(ex => ({
-          ...ex,
-          sets: ex.sets.map(s => ({
-            ...s,
-            weight: parseFloat((s.weight * factor).toFixed(1))
-          }))
-        }))
-      }));
-      localStorage.setItem('gymProgress_custom_routines', JSON.stringify(convertedRoutines));
-    }
-
-    // 4. Convertir biblioteca de ejercicios (últimos pesos)
-    const savedLibrary = localStorage.getItem('gymProgress_exercises');
-    if (savedLibrary) {
-      const library = JSON.parse(savedLibrary);
-      const convertedLibrary = library.map((ex: Exercise) => ({
-        ...ex,
-        lastWeight: ex.lastWeight ? parseFloat((ex.lastWeight * factor).toFixed(1)) : undefined
-      }));
-      localStorage.setItem('gymProgress_exercises', JSON.stringify(convertedLibrary));
-    }
-
     onUpdateProfile(updatedProfile);
     setEditForm(updatedProfile);
     setShowUnitModal(false);
   };
 
   const headerStyle = "sticky top-0 z-[60] bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-xl border-b border-black/5 dark:border-white/5 pt-[calc(max(1rem,env(safe-area-inset-top))+0.75rem)] pb-4 px-6 transition-all";
-
   const currentAvatar = userProfile.avatarUrl || PRESET_AVATARS[0];
 
   if (isEditing) {
@@ -125,7 +131,13 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
           <div className="flex items-center justify-between">
             <button onClick={() => setIsEditing(false)} className="text-slate-400 font-black text-[10px] uppercase tracking-widest px-4 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 active:scale-95 transition-all">Cancelar</button>
             <h2 className="text-xl font-black tracking-tighter">Ajustes</h2>
-            <button onClick={handleSave} className="text-black font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-xl bg-primary shadow-lg shadow-primary/20 active:scale-95 transition-all">Guardar</button>
+            <button 
+              onClick={handleSaveAttempt} 
+              disabled={!isFormValid}
+              className="text-black font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-xl bg-primary shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale"
+            >
+              Guardar
+            </button>
           </div>
         </header>
         <main className="p-6 space-y-10 overflow-y-auto no-scrollbar">
@@ -137,10 +149,82 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
             </div>
           </div>
           <div className="space-y-8 bg-white dark:bg-surface-dark p-8 rounded-[3rem] border border-black/5 shadow-sm">
-            <NumberInput label="Edad" value={editForm.age} onChange={(v) => setEditForm({...editForm, age: v})} min={14} max={99} />
-            <NumberInput label={`Peso (${editForm.weightUnit})`} value={editForm.weight} onChange={(v) => setEditForm({...editForm, weight: v})} min={30} max={600} step={0.5} />
-            <NumberInput label="Altura (cm)" value={editForm.height} onChange={(v) => setEditForm({...editForm, height: v})} min={100} max={230} />
+            <NumberInput label="Edad" value={editForm.age} onChange={(v) => setEditForm({...editForm, age: v})} min={VALID_LIMITS.age.min} max={VALID_LIMITS.age.max} />
+            <NumberInput label={`Peso (${editForm.weightUnit})`} value={editForm.weight} onChange={(v) => setEditForm({...editForm, weight: v})} min={VALID_LIMITS.weight.min} max={VALID_LIMITS.weight.max} step={0.5} />
+            <NumberInput label="Altura (cm)" value={editForm.height} onChange={(v) => setEditForm({...editForm, height: v})} min={VALID_LIMITS.height.min} max={VALID_LIMITS.height.max} />
           </div>
+
+          {!isFormValid && (
+             <div className="bg-rose-500/10 p-5 rounded-2xl border border-rose-500/20 text-center animate-in slide-in-from-top-2">
+                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">⚠️ Hay datos fuera de los rangos permitidos</p>
+             </div>
+          )}
+
+          {showWeightSuggestion && (
+            <div className="fixed inset-0 z-[150] flex items-end justify-center animate-in fade-in duration-300">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => handleFinalSave()}></div>
+              <div className="relative w-full max-w-md bg-white dark:bg-surface-dark rounded-t-[4rem] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-hidden max-h-[90vh] flex flex-col">
+                <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-8 opacity-40 shrink-0"></div>
+                
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10">
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="size-20 rounded-[2.2rem] bg-primary/20 text-primary flex items-center justify-center shadow-inner">
+                      <span className="material-symbols-outlined text-4xl font-black">scale</span>
+                    </div>
+                    <h3 className="text-3xl font-black tracking-tighter leading-none">¿Ajustamos tus metas?</h3>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                      Tu peso ha cambiado a <span className="text-primary-text dark:text-primary font-black">{editForm.weight} {editForm.weightUnit}</span>. ¿Quieres que la IA recalcule tu volumen ideal?
+                    </p>
+                  </div>
+
+                  {!aiResult ? (
+                    <button 
+                      onClick={handleAskAI}
+                      disabled={aiLoading}
+                      className="w-full h-24 bg-black dark:bg-white text-white dark:text-black rounded-[2.5rem] flex items-center justify-center gap-4 active:scale-95 transition-all shadow-xl relative overflow-hidden"
+                    >
+                      {aiLoading && <div className="absolute inset-0 bg-primary/20 animate-pulse"></div>}
+                      <span className="material-symbols-outlined text-3xl font-black">psychology</span>
+                      <div className="text-left">
+                        <p className="font-black text-lg leading-none uppercase tracking-tighter">Recalcular con IA</p>
+                        <p className="text-[9px] font-bold opacity-60 uppercase tracking-widest mt-1">Ciencia aplicada a tu nuevo peso</p>
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="space-y-6 animate-in zoom-in-95 duration-300">
+                      <div className="p-8 bg-slate-50 dark:bg-background-dark/50 rounded-[3rem] border-2 border-primary/30 text-center">
+                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4">Carga Semanal Recomendada</p>
+                         {recommendedVolume && (
+                           <div className="flex flex-col items-center mb-4">
+                             <span className="text-6xl font-black tracking-tighter tabular-nums text-primary-text dark:text-primary">
+                               {recommendedVolume.toLocaleString()}
+                             </span>
+                             <span className="text-sm font-black text-slate-400 uppercase tracking-widest">{editForm.weightUnit}</span>
+                           </div>
+                         )}
+                         <p className="text-xs font-bold text-slate-600 dark:text-slate-300 italic leading-relaxed">
+                           {aiResult}
+                         </p>
+                      </div>
+                      <button 
+                        onClick={() => handleFinalSave(recommendedVolume || undefined)}
+                        className="w-full h-20 bg-primary text-black rounded-full font-black text-lg uppercase tracking-widest active:scale-95 transition-all shadow-xl"
+                      >
+                        APLICAR NUEVA META
+                      </button>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => handleFinalSave()}
+                    className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] active:scale-95 transition-all"
+                  >
+                    Mantener metas actuales
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
@@ -248,31 +332,17 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
         </button>
       </div>
 
-      {/* FULL SCREEN IMAGE MODAL - ZOOM EFFECT */}
       {showFullImage && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          {/* Backdrop con desenfoque extremo */}
-          <div 
-            onClick={() => setShowFullImage(false)} 
-            className="absolute inset-0 bg-black/95 backdrop-blur-3xl"
-          ></div>
-          
-          <button 
-            onClick={() => setShowFullImage(false)} 
-            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] right-6 size-12 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-90 transition-all z-[260]"
-          >
+          <div onClick={() => setShowFullImage(false)} className="absolute inset-0 bg-black/95 backdrop-blur-3xl"></div>
+          <button onClick={() => setShowFullImage(false)} className="absolute top-[calc(env(safe-area-inset-top)+1rem)] right-6 size-12 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-90 transition-all z-[260]">
             <span className="material-symbols-outlined font-black text-2xl">close</span>
           </button>
-
-          <div className="relative z-[255] w-full max-w-sm flex flex-col items-center animate-in zoom-in-50 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+          <div className="relative z-[255] w-full max-w-sm flex flex-col items-center animate-in zoom-in-50 duration-500">
             <div className="w-full aspect-square rounded-[3.5rem] animate-profile-ring p-1.5 shadow-[0_0_120px_rgba(96,165,250,0.4)] overflow-hidden mb-10">
-              <div 
-                className="w-full h-full rounded-[3.1rem] bg-cover bg-center border-[12px] border-black/40" 
-                style={{ backgroundImage: `url("${currentAvatar}")` }}
-              ></div>
+              <div className="w-full h-full rounded-[3.1rem] bg-cover bg-center border-[12px] border-black/40" style={{ backgroundImage: `url("${currentAvatar}")` }}></div>
             </div>
-            
-            <div className="text-center space-y-3 animate-in slide-in-from-bottom-8 duration-700">
+            <div className="text-center space-y-3">
               <div className="flex items-center justify-center gap-3">
                 <span className="material-symbols-outlined text-primary font-black text-3xl">verified</span>
                 <h4 className="text-white font-black text-4xl tracking-tighter uppercase">{userProfile.alias || 'Atleta'}</h4>
@@ -283,14 +353,13 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
         </div>
       )}
 
-      {/* MODAL DE AVATAR PICKER */}
       {showAvatarPicker && (
-        <div className="fixed inset-0 z-[140] bg-black/80 backdrop-blur-xl flex items-end justify-center animate-in fade-in duration-300 overflow-hidden">
+        <div className="fixed inset-0 z-[140] bg-black/80 backdrop-blur-xl flex items-end justify-center animate-in fade-in duration-300">
           <div onClick={() => setShowAvatarPicker(false)} className="absolute inset-0 z-0"></div>
-          <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] shadow-[0_-20px_80px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom duration-500 relative z-10 flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] shadow-2xl animate-in slide-in-from-bottom duration-500 relative z-10 flex flex-col max-h-[90vh]">
             <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-5 mb-2 opacity-40"></div>
             <div className="p-8 pt-4 pb-4 flex items-center justify-between border-b border-black/5 dark:border-white/5">
-               <div><h3 className="text-3xl font-black tracking-tighter">Avatar Studio</h3></div>
+               <h3 className="text-3xl font-black tracking-tighter">Avatar Studio</h3>
                <button onClick={() => setShowAvatarPicker(false)} className="size-12 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-400 active:scale-90 transition-all"><span className="material-symbols-outlined font-black">close</span></button>
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-10 pb-16">
@@ -298,22 +367,14 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Presets Pro</p>
                   <div className="grid grid-cols-2 gap-5">
                      {PRESET_AVATARS.map((url, i) => (
-                       <button key={i} onClick={() => handleAvatarSelect(url)} className={`aspect-square rounded-[2.5rem] bg-cover bg-center border-[6px] transition-all active:scale-90 relative overflow-hidden group ${userProfile.avatarUrl === url ? 'border-primary shadow-xl shadow-primary/20 scale-105' : 'border-transparent grayscale-[0.3] opacity-70 hover:opacity-100'}`} style={{ backgroundImage: `url("${url}")` }}>
+                       <button key={i} onClick={() => handleAvatarSelect(url)} className={`aspect-square rounded-[2.5rem] bg-cover bg-center border-[6px] transition-all active:scale-90 relative overflow-hidden group ${userProfile.avatarUrl === url ? 'border-primary shadow-xl scale-105' : 'border-transparent grayscale-[0.3] opacity-70'}`} style={{ backgroundImage: `url("${url}")` }}>
                          {userProfile.avatarUrl === url && (<div className="absolute top-3 right-3 size-6 bg-primary rounded-full flex items-center justify-center shadow-lg animate-in zoom-in"><span className="material-symbols-outlined text-[14px] font-black text-black">check</span></div>)}
                        </button>
                      ))}
                   </div>
                </div>
-               <div className="space-y-6">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Personalizado</p>
-                  <button className="w-full py-12 rounded-[3rem] border-4 border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-background-dark/50 flex flex-col items-center justify-center gap-4 opacity-60 overflow-hidden relative" disabled>
-                    <span className="material-symbols-outlined text-5xl text-slate-300">cloud_upload</span>
-                    <div className="text-center"><span className="text-[11px] font-black uppercase tracking-widest block text-slate-400">Subir Imagen</span><span className="text-[9px] font-black uppercase tracking-[0.25em] text-primary bg-black dark:bg-white/10 px-4 py-1.5 rounded-full mt-3 inline-block shadow-xl">Próximamente</span></div>
-                  </button>
-               </div>
             </div>
-            <div className="p-8 pt-0 bg-gradient-to-t from-white dark:from-surface-dark via-white dark:via-surface-dark to-transparent"><button onClick={() => setShowAvatarPicker(false)} className="w-full py-6 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all">CERRAR STUDIO</button></div>
-            <div style={{ height: 'env(safe-area-inset-bottom)' }}></div>
+            <div className="p-8 pt-0"><button onClick={() => setShowAvatarPicker(false)} className="w-full py-6 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.2em] shadow-2xl">CERRAR STUDIO</button></div>
           </div>
         </div>
       )}
@@ -329,7 +390,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                   <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Actual</p>
                   <p className="text-2xl font-black tabular-nums">{userProfile.weight} <span className="text-xs text-slate-400 font-bold">{userProfile.weightUnit}</span></p>
                </div>
-               <span className="material-symbols-outlined text-primary font-black animate-pulse">arrow_forward</span>
+               <span className="material-symbols-outlined text-primary font-black">arrow_forward</span>
                <div className="text-center">
                   <p className="text-2xl font-black tabular-nums text-primary-text dark:text-primary">
                     {userProfile.weightUnit === 'kg' ? (userProfile.weight * 2.20462).toFixed(1) : (userProfile.weight * 0.453592).toFixed(1)} 
@@ -337,7 +398,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                   </p>
                </div>
             </div>
-            <button onClick={() => handleApplyUnitChange(userProfile.weightUnit === 'kg' ? 'lb' : 'kg')} className="w-full py-7 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.25em] shadow-2xl active:scale-95 transition-all">APLICAR CAMBIOS</button>
+            <button onClick={() => handleApplyUnitChange(userProfile.weightUnit === 'kg' ? 'lb' : 'kg')} className="w-full py-7 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.25em] active:scale-95 transition-all shadow-2xl">APLICAR CAMBIOS</button>
           </div>
         </div>
       )}
@@ -345,11 +406,11 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
           <div onClick={() => setShowLogoutConfirm(false)} className="absolute inset-0"></div>
-          <div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3.5rem] p-10 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95 relative">
-            <div className="size-20 rounded-[2rem] bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-inner"><span className="material-symbols-outlined text-4xl font-black">logout</span></div>
+          <div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3.5rem] p-10 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95">
+            <div className="size-20 rounded-[2rem] bg-rose-500/10 flex items-center justify-center text-rose-500"><span className="material-symbols-outlined text-4xl font-black">logout</span></div>
             <h3 className="text-2xl font-black tracking-tighter">¿Cerrar Sesión?</h3>
             <div className="flex flex-col w-full gap-3">
-              <button onClick={() => { setShowLogoutConfirm(false); onLogout(); }} className="w-full py-5 rounded-full bg-rose-500 text-white font-black text-xs uppercase tracking-[0.2em] active:scale-95 transition-all shadow-xl shadow-rose-500/20">CONFIRMAR SALIDA</button>
+              <button onClick={() => { setShowLogoutConfirm(false); onLogout(); }} className="w-full py-5 rounded-full bg-rose-500 text-white font-black text-xs uppercase tracking-[0.2em] active:scale-95 transition-all">CONFIRMAR SALIDA</button>
               <button onClick={() => setShowLogoutConfirm(false)} className="w-full py-5 rounded-full bg-slate-100 dark:bg-background-dark text-slate-400 font-black text-xs uppercase tracking-widest">CANCELAR</button>
             </div>
           </div>

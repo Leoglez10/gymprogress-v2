@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Exercise, CustomRoutine, CustomExerciseEntry, UserProfile } from '../types';
+import { getMuscleDefaultImage } from './ExerciseLibrary';
 
 interface CreateWorkoutProps {
   onBack: () => void;
@@ -91,7 +92,7 @@ const CreateWorkout: React.FC<CreateWorkoutProps> = ({ onBack, onSave, initialRo
       difficulty: 'Principiante',
       equipment: 'Peso Corporal',
       type: 'Strength',
-      thumbnail: ''
+      thumbnail: getMuscleDefaultImage(newExerciseMuscle) // Imagen por defecto siempre presente
     };
     const updatedLibrary = [newEx, ...library];
     setLibrary(updatedLibrary);

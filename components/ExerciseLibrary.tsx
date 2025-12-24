@@ -18,7 +18,6 @@ const DEFAULT_EXERCISES: Exercise[] = [
   { id: '11', name: 'Sentadilla con Barra', muscleGroup: 'Piernas', category: 'Legs', type: 'Compuesto', difficulty: 'Intermedio', equipment: 'Barra', thumbnail: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=400&auto=format&fit=crop', lastWeight: 100 },
 ];
 
-// Relación lógica entre categoría y músculos
 const CATEGORY_MUSCLE_MAP: Record<string, string[]> = {
   'Push': ['Pecho', 'Hombros', 'Brazos'],
   'Pull': ['Espalda', 'Brazos'],
@@ -26,7 +25,7 @@ const CATEGORY_MUSCLE_MAP: Record<string, string[]> = {
   'Core': ['Core']
 };
 
-const getMuscleDefaultImage = (muscleGroup: string) => {
+export const getMuscleDefaultImage = (muscleGroup: string) => {
   const muscle = muscleGroup.toLowerCase();
   if (muscle.includes('pecho')) return 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=400&auto=format&fit=crop';
   if (muscle.includes('espalda')) return 'https://images.unsplash.com/photo-1603287611837-e21f37a4c70e?q=80&w=400&auto=format&fit=crop';
@@ -48,6 +47,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [isScrolled, setIsScrolled] = useState(false);
   const [showPatternHelp, setShowPatternHelp] = useState(false);
+  const [exerciseToDelete, setExerciseToDelete] = useState<Exercise | null>(null);
   
   const mainRef = useRef<HTMLElement>(null);
   const lastScrollTop = useRef(0);
@@ -137,13 +137,21 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
         difficulty: formData.difficulty,
         equipment: formData.equipment,
         type: 'Personalizado',
-        thumbnail: ''
+        thumbnail: getMuscleDefaultImage(formData.muscle)
       };
       saveList([exercise, ...exerciseList]);
     } else if (modalMode === 'edit' && editingEx) {
       const updated = exerciseList.map(ex => 
         String(ex.id) === String(editingEx.id) 
-          ? { ...ex, name: formData.name, muscleGroup: formData.muscle, equipment: formData.equipment, difficulty: formData.difficulty, category: formData.category } 
+          ? { 
+              ...ex, 
+              name: formData.name, 
+              muscleGroup: formData.muscle, 
+              equipment: formData.equipment, 
+              difficulty: formData.difficulty, 
+              category: formData.category,
+              thumbnail: ex.thumbnail || getMuscleDefaultImage(formData.muscle)
+            } 
           : ex
       );
       saveList(updated);
@@ -152,10 +160,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
     setEditingEx(null);
   };
 
-  const deleteExercise = (id: string) => {
-    if (DEFAULT_EXERCISES.find(d => String(d.id) === String(id))) return;
-    const updated = exerciseList.filter(ex => String(ex.id) !== String(id));
+  const confirmDelete = () => {
+    if (!exerciseToDelete) return;
+    const updated = exerciseList.filter(ex => String(ex.id) !== String(exerciseToDelete.id));
     saveList(updated);
+    setExerciseToDelete(null);
   };
 
   const toggleFavorite = (id: string) => {
@@ -187,8 +196,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
     return map;
   }, [workoutHistory]);
 
-  const hasActiveFilters = activeCategory !== 'Todo' || activeMuscle !== 'Todos' || activeEquipment !== 'Todos';
-
   const filteredExercises = useMemo(() => {
     return exerciseList.filter(ex => {
       const matchesSearch = ex.name.toLowerCase().includes(search.toLowerCase()) || ex.muscleGroup.toLowerCase().includes(search.toLowerCase());
@@ -214,15 +221,56 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
           <div className="flex items-center gap-3">
             {(isScrolled && !showFilters) && (<button onClick={onBack} className="size-11 shrink-0 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-white/10 text-slate-500 active:scale-90 transition-all border border-black/5 animate-in slide-in-from-left-4 duration-300"><span className="material-symbols-outlined text-xl font-black">arrow_back</span></button>)}
             <div className="relative group flex-1 transition-all duration-300"><div className="absolute inset-0 bg-primary/10 rounded-[1.5rem] blur-md opacity-0 group-focus-within:opacity-100 transition-opacity"></div><div className={`relative flex items-center bg-slate-50 dark:bg-surface-dark rounded-[1.5rem] px-5 border border-black/5 dark:border-white/5 shadow-inner transition-all focus-within:ring-2 focus-within:ring-primary ${isScrolled ? 'h-11' : 'h-14'}`}><span className="material-symbols-outlined text-slate-400 mr-3 text-xl">search</span><input className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-bold placeholder:text-slate-400 placeholder:font-medium" placeholder="Busca ejercicios o músculos..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
-            <button onClick={() => setShowFilters(!showFilters)} className={`rounded-[1.5rem] flex items-center justify-center transition-all active:scale-90 border relative shrink-0 ${isScrolled ? 'size-11' : 'size-14'} ${showFilters || hasActiveFilters ? 'bg-black dark:bg-white text-white dark:text-black border-transparent' : 'bg-white dark:bg-surface-dark text-slate-400 border-black/5'}`}><span className={`material-symbols-outlined font-black transition-all ${isScrolled ? 'text-xl' : 'text-2xl'}`}>{showFilters ? 'close' : 'tune'}</span>{hasActiveFilters && !showFilters && (<div className="absolute -top-0.5 -right-0.5 size-3 bg-primary rounded-full border-2 border-white dark:border-background-dark"></div>)}</button>
+            <button onClick={() => setShowFilters(!showFilters)} className={`rounded-[1.5rem] flex items-center justify-center transition-all active:scale-90 border relative shrink-0 ${isScrolled ? 'size-11' : 'size-14'} ${showFilters || (activeCategory !== 'Todo' || activeMuscle !== 'Todos' || activeEquipment !== 'Todos') ? 'bg-black dark:bg-white text-white dark:text-black border-transparent' : 'bg-white dark:bg-surface-dark text-slate-400 border-black/5'}`}><span className={`material-symbols-outlined font-black transition-all ${isScrolled ? 'text-xl' : 'text-2xl'}`}>{showFilters ? 'close' : 'tune'}</span>{(activeCategory !== 'Todo' || activeMuscle !== 'Todos' || activeEquipment !== 'Todos') && !showFilters && (<div className="absolute -top-0.5 -right-0.5 size-3 bg-primary rounded-full border-2 border-white dark:border-background-dark"></div>)}</button>
           </div>
           <div className={`overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${showFilters ? 'max-h-[600px] opacity-100 mt-4 mb-2' : 'max-h-0 opacity-0'}`}><div className="bg-slate-100 dark:bg-surface-dark/80 p-6 rounded-[2.5rem] border border-black/5 space-y-6"><div className="flex items-center justify-between mb-2"><h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Configuración de Búsqueda</h4><button onClick={() => { setActiveCategory('Todo'); setActiveMuscle('Todos'); setActiveEquipment('Todos'); }} className="text-[9px] font-black uppercase text-primary tracking-widest bg-black dark:bg-white/10 px-3 py-1 rounded-full active:scale-95 transition-all">Limpiar</button></div><div className="space-y-4"><div className="space-y-2"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Movimiento</p><div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">{['Todo', 'Push', 'Pull', 'Legs', 'Core'].map(cat => (<button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 h-10 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shrink-0 border-2 active:scale-95 ${activeCategory === cat ? 'bg-primary border-primary text-black shadow-lg shadow-primary/20' : 'bg-white dark:bg-surface-dark border-black/5 text-slate-400'}`}>{cat}</button>))}</div></div><div className="space-y-2"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Músculo Objetivo</p><div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">{['Todos', 'Pecho', 'Espalda', 'Piernas', 'Hombros', 'Brazos', 'Core'].map(m => (<button key={m} onClick={() => setActiveMuscle(m)} className={`px-4 h-9 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all shrink-0 border active:scale-95 ${activeMuscle === m ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white shadow-md' : 'bg-white dark:bg-surface-dark border-black/5 text-slate-400'}`}>{m}</button>))}</div></div><div className="space-y-2"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Equipamiento</p><div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">{['Todos', 'Barra', 'Mancuernas', 'Polea', 'Máquina', 'Peso Corporal'].map(e => (<button key={e} onClick={() => setActiveEquipment(e)} className={`px-4 h-9 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all shrink-0 border active:scale-95 ${activeEquipment === e ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white shadow-md' : 'bg-white dark:bg-surface-dark border-black/5 text-slate-400'}`}>{e}</button>))}</div></div></div></div></div>
         </div>
       </header>
 
-      <main ref={mainRef} onScroll={handleScroll} className="flex-1 px-4 pt-6 pb-48 overflow-y-auto no-scrollbar scroll-smooth"><div className="flex items-center gap-2 mb-6 px-4"><span className={`size-2 rounded-full bg-primary transition-all duration-300 ${isScrolled ? 'scale-150' : 'animate-pulse'}`}></span><h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em]">{filteredExercises.length} Ejercicios encontrados</h3></div><div className={viewMode === 'grid' ? "grid grid-cols-2 gap-4 pb-20" : "flex flex-col gap-4 pb-20"}>{filteredExercises.map(ex => (<ExerciseCard key={ex.id} ex={ex} isGrid={viewMode === 'grid'} onFavorite={() => toggleFavorite(ex.id)} onDelete={() => deleteExercise(ex.id)} onEdit={() => handleOpenEdit(ex)} isDeletable={!DEFAULT_EXERCISES.find(d => String(d.id) === String(ex.id))} progression={progressionMap[String(ex.id)] || []} />))}</div></main>
+      <main ref={mainRef} onScroll={handleScroll} className="flex-1 px-4 pt-6 pb-48 overflow-y-auto no-scrollbar scroll-smooth">
+        <div className="flex items-center gap-2 mb-6 px-4">
+          <span className={`size-2 rounded-full bg-primary transition-all duration-300 ${isScrolled ? 'scale-150' : 'animate-pulse'}`}></span>
+          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em]">{filteredExercises.length} Ejercicios encontrados</h3>
+        </div>
+        <div className={viewMode === 'grid' ? "grid grid-cols-2 gap-4 pb-20" : "flex flex-col gap-4 pb-20"}>
+          {filteredExercises.map(ex => (
+            <ExerciseCard 
+              key={ex.id} 
+              ex={ex} 
+              isGrid={viewMode === 'grid'} 
+              onFavorite={() => toggleFavorite(ex.id)} 
+              onDelete={() => setExerciseToDelete(ex)} 
+              onEdit={() => handleOpenEdit(ex)} 
+              isDeletable={!DEFAULT_EXERCISES.find(d => String(d.id) === String(ex.id))} 
+              progression={progressionMap[String(ex.id)] || []} 
+            />
+          ))}
+        </div>
+      </main>
 
-      <div className={`fixed right-6 z-50 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isFooterVisible ? 'bottom-[calc(112px+env(safe-area-inset-bottom))] scale-100 opacity-100' : 'bottom-[calc(32px+env(safe-area-inset-bottom))] scale-95 opacity-90'}`}><div className="relative group"><div className="absolute inset-0 bg-primary/20 rounded-full blur-xl scale-110 group-active:scale-150 transition-all duration-500"></div><button onClick={handleOpenCreate} className="w-16 h-16 bg-primary text-black rounded-full shadow-[0_15px_35px_rgba(255,239,10,0.35)] flex items-center justify-center active:scale-90 active:ring-8 active:ring-primary/20 transition-all border-4 border-white dark:border-background-dark relative z-10"><span className="material-symbols-outlined text-4xl font-black group-hover:rotate-90 transition-transform">add</span></button></div></div>
+      <div className={`fixed right-6 z-50 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isFooterVisible ? 'bottom-[calc(112px+env(safe-area-inset-bottom))] scale-100 opacity-100' : 'bottom-[calc(32px+env(safe-area-inset-bottom))] scale-95 opacity-90'}`}>
+        <button onClick={handleOpenCreate} className="w-16 h-16 bg-primary text-black rounded-full shadow-[0_15px_35px_rgba(255,239,10,0.35)] flex items-center justify-center active:scale-90 transition-all border-4 border-white dark:border-background-dark relative z-10">
+          <span className="material-symbols-outlined text-4xl font-black">add</span>
+        </button>
+      </div>
+
+      {exerciseToDelete && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3rem] p-8 shadow-2xl flex flex-col items-center text-center gap-6 animate-in zoom-in-95">
+            <div className="size-20 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-500">
+              <span className="material-symbols-outlined text-4xl">warning</span>
+            </div>
+            <div>
+              <h3 className="text-xl font-black mb-1">¿Borrar ejercicio?</h3>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">Estás a punto de eliminar <span className="text-slate-900 dark:text-white font-bold">"{exerciseToDelete.name}"</span>. Esta acción no se puede deshacer.</p>
+            </div>
+            <div className="flex flex-col w-full gap-3">
+              <button onClick={confirmDelete} className="w-full py-4 rounded-full bg-rose-500 text-white font-black text-sm active:scale-95 transition-all uppercase tracking-widest">ELIMINAR</button>
+              <button onClick={() => setExerciseToDelete(null)} className="w-full py-4 rounded-full bg-slate-100 dark:bg-background-dark text-slate-400 font-black text-sm active:scale-95 transition-all uppercase tracking-widest">CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalMode && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xl flex items-end animate-in fade-in duration-300">
@@ -240,7 +288,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
               <div className="space-y-4">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Músculo Principal</label>
                 <div className="flex flex-wrap gap-2">
-                  {/* Músculos filtrados según categoría */}
                   {CATEGORY_MUSCLE_MAP[formData.category].map(m => (
                     <button key={m} onClick={() => setFormData({...formData, muscle: m})} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95 ${formData.muscle === m ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white shadow-md' : 'bg-slate-50 dark:bg-background-dark border-black/5 text-slate-400'}`}>{m}</button>
                   ))}
@@ -259,17 +306,166 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onToggleFoote
 
 const ExerciseCard: React.FC<{ ex: Exercise; isGrid: boolean; onFavorite: () => void; onDelete: () => void; onEdit: () => void; isDeletable: boolean; progression: { weight: number, date: string }[]; }> = ({ ex, isGrid, onFavorite, onDelete, onEdit, isDeletable, progression }) => {
   const [swipeX, setSwipeX] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingEffect, setIsDeletingEffect] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const startX = useRef(0);
   const isDragging = useRef(false);
-  const onTouchStart = (e: React.TouchEvent) => { if (isGrid) return; startX.current = e.touches[0].clientX; isDragging.current = true; };
-  const onTouchMove = (e: React.TouchEvent) => { if (isGrid || !isDragging.current) return; const currentX = e.touches[0].clientX; const diff = currentX - startX.current; if (diff < 0) { setSwipeX(diff); if (diff < -200 && isDeletable) setIsDeleting(true); else setIsDeleting(false); } };
-  const onTouchEnd = () => { if (isGrid) return; isDragging.current = false; if (swipeX < -200 && isDeletable) onDelete(); else if (swipeX < -80 && isDeletable) setSwipeX(-80); else { setSwipeX(0); setIsDeleting(false); } };
+
+  const onTouchStart = (e: React.TouchEvent) => { 
+    if (isGrid) return; 
+    startX.current = e.touches[0].clientX; 
+    isDragging.current = true; 
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => { 
+    if (isGrid || !isDragging.current) return; 
+    const currentX = e.touches[0].clientX; 
+    const diff = currentX - startX.current; 
+    
+    if (diff < 0) { 
+      setSwipeX(diff); 
+      // Si desliza mucho, visualmente indicamos que se borrará
+      if (diff < -220 && isDeletable) setIsDeletingEffect(true); 
+      else setIsDeletingEffect(false); 
+    } 
+  };
+
+  const onTouchEnd = () => { 
+    if (isGrid) return; 
+    isDragging.current = false; 
+    
+    // Si el deslizamiento fue total, disparamos la confirmación de borrado
+    if (swipeX < -220 && isDeletable) {
+      setSwipeX(0);
+      setIsDeletingEffect(false);
+      onDelete();
+    } 
+    // Si el deslizamiento fue parcial, dejamos el botón a la vista
+    else if (swipeX < -100 && isDeletable) {
+      setSwipeX(-100);
+    } 
+    // Si no, volvemos a la posición inicial
+    else { 
+      setSwipeX(0); 
+      setIsDeletingEffect(false); 
+    } 
+  };
+
   const difficultyStyles = { 'Principiante': 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', 'Intermedio': 'text-amber-500 bg-amber-500/10 border-amber-500/20', 'Avanzado': 'text-rose-500 bg-rose-500/10 border-rose-500/20' };
-  const improvementPercent = useMemo(() => { if (progression.length < 2) return null; const start = progression[0].weight; const current = progression[progression.length - 1].weight; if (start === 0) return null; const diff = (((current - start) / start) * 100).toFixed(1); return parseFloat(diff) > 0 ? `+${diff}` : diff; }, [progression]);
+  
+  const improvementPercent = useMemo(() => { 
+    if (progression.length < 2) return null; 
+    const start = progression[0].weight; 
+    const current = progression[progression.length - 1].weight; 
+    if (start === 0) return null; 
+    const diff = (((current - start) / start) * 100).toFixed(1); 
+    return parseFloat(diff) > 0 ? `+${diff}` : diff; 
+  }, [progression]);
+
   return (
-    <div className={`relative overflow-hidden rounded-[2.5rem] transition-all duration-300 ${isDeleting ? 'scale-95 opacity-50' : 'scale-100'}`}>{!isGrid && isDeletable && (<div className="absolute inset-0 bg-red-500 flex items-center justify-end px-8 transition-opacity duration-300" style={{ opacity: Math.abs(swipeX) > 40 ? 1 : 0 }}><span className="material-symbols-outlined text-white text-3xl font-black">delete</span></div>)}<div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onClick={() => setIsExpanded(!isExpanded)} className={`group bg-white dark:bg-surface-dark border border-black/5 dark:border-white/5 shadow-sm overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] relative flex flex-col ${isGrid ? '' : 'p-4'}`} style={{ transform: `translateX(${swipeX}px)`, borderRadius: 'inherit' }}><div className={`flex ${isGrid ? 'flex-col' : 'flex-row items-center gap-5'}`}><div className={`relative shrink-0 overflow-hidden ${isGrid ? 'h-40 w-full' : 'size-28 rounded-3xl shadow-lg'}`}><img src={ex.thumbnail || getMuscleDefaultImage(ex.muscleGroup)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={ex.name} />{isGrid && (<button onClick={(e) => { e.stopPropagation(); onFavorite(); }} className={`absolute top-3 right-3 size-10 rounded-2xl backdrop-blur-md flex items-center justify-center transition-all active:scale-125 ${ex.isFavorite ? 'bg-primary text-black' : 'bg-black/20 text-white'}`}><span className={`material-symbols-outlined text-xl ${ex.isFavorite ? 'fill-1' : ''}`}>{ex.isFavorite ? 'star' : 'star_border'}</span></button>)}</div><div className={`flex-1 min-w-0 ${isGrid ? 'p-6' : 'pr-2'}`}><div className="flex flex-wrap items-center gap-2 mb-2.5"><span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${difficultyStyles[ex.difficulty as keyof typeof difficultyStyles]}`}>{ex.difficulty}</span><span className="text-[8px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-black/5">{ex.equipment}</span></div><div className="flex items-center justify-between gap-2"><h4 className={`font-black tracking-tighter leading-tight truncate text-slate-900 dark:text-white ${isGrid ? 'text-lg' : 'text-base'}`}>{ex.name}</h4><span className={`material-symbols-outlined text-slate-300 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-primary' : ''}`}>expand_more</span></div><div className="flex items-center justify-between mt-3"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{ex.muscleGroup} • {ex.category}</p><div className="flex gap-2">{!isGrid && (<button onClick={(e) => { e.stopPropagation(); onFavorite(); }} className={`size-8 rounded-lg flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-primary text-black' : 'bg-slate-50 dark:bg-white/5 text-slate-300'}`}><span className={`material-symbols-outlined text-[18px] ${ex.isFavorite ? 'fill-1' : ''}`}>{ex.isFavorite ? 'star' : 'star_border'}</span></button>)}<button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="size-8 rounded-lg bg-slate-50 dark:bg-white/5 text-slate-400 flex items-center justify-center active:bg-primary active:text-black transition-all"><span className="material-symbols-outlined text-[18px]">edit</span></button></div></div></div></div><div className={`overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${isExpanded ? 'max-h-[350px] opacity-100 mt-6' : 'max-h-0 opacity-0'}`}><div className="pt-6 border-t border-black/5 dark:border-white/5">{progression.length > 1 ? (<div className="space-y-6 animate-in fade-in duration-500"><div className="flex justify-between items-end px-2"><div className="flex gap-4"><div><p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Inicio</p><p className="text-xl font-black">{progression[0].weight} <span className="text-[10px] opacity-40">kg</span></p></div><div className="w-px h-8 bg-black/5 dark:bg-white/5 self-center"></div><div><p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Actual</p><p className="text-xl font-black">{progression[progression.length-1].weight} <span className="text-[10px] opacity-40">kg</span></p></div></div>{improvementPercent && (<div className="bg-primary/10 text-primary-text dark:text-primary px-3 py-1 rounded-full border border-primary/20"><p className="text-[10px] font-black uppercase tracking-widest">{improvementPercent}% Mejora</p></div>)}</div><div className="h-44 w-full bg-slate-50/50 dark:bg-background-dark/30 rounded-[2rem] p-4 border border-black/5"><ResponsiveContainer width="100%" height="100%"><AreaChart data={progression}><defs><linearGradient id={`colorProg-${ex.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#FFEF0A" stopOpacity={0.4}/><stop offset="95%" stopColor="#FFEF0A" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.1} /><XAxis dataKey="date" hide={false} axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: '900', fill: '#94a3b8' }} padding={{ left: 10, right: 10 }} /><YAxis hide domain={['dataMin - 5', 'dataMax + 5']} /><Tooltip cursor={{ stroke: '#FFEF0A', strokeWidth: 2 }} content={({ active, payload }) => { if (active && payload && payload.length) { return (<div className="bg-black text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-2xl border border-white/10">{payload[0].value} kg</div>); } return null; }} /><Area type="monotone" dataKey="weight" stroke="#FFEF0A" strokeWidth={4} fillOpacity={1} fill={`url(#colorProg-${ex.id})`} dot={{ r: 4, fill: '#FFEF0A', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#000', strokeWidth: 3, stroke: '#FFEF0A' }} /></AreaChart></ResponsiveContainer></div></div>) : (<div className="h-32 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-100 dark:border-white/5 rounded-[2rem] mx-2"><span className="material-symbols-outlined text-3xl text-slate-200 dark:text-slate-800 mb-2">analytics</span><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed max-w-[180px]">Sin datos suficientes para mostrar progresión.</p></div>)}</div></div></div></div>
+    <div className={`relative overflow-hidden rounded-[2.5rem] transition-all duration-300 ${isDeletingEffect ? 'scale-95 opacity-50' : 'scale-100'}`}>
+      {!isGrid && isDeletable && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute inset-0 bg-rose-500 flex items-center justify-end px-10 transition-opacity duration-300" 
+          style={{ opacity: Math.abs(swipeX) > 40 ? 1 : 0 }}
+        >
+          <span className="material-symbols-outlined text-white text-3xl font-black">delete</span>
+        </button>
+      )}
+      
+      <div 
+        onTouchStart={onTouchStart} 
+        onTouchMove={onTouchMove} 
+        onTouchEnd={onTouchEnd} 
+        onClick={() => setIsExpanded(!isExpanded)} 
+        className={`group bg-white dark:bg-surface-dark border border-black/5 dark:border-white/5 shadow-sm overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] relative flex flex-col ${isGrid ? '' : 'p-4'}`} 
+        style={{ transform: `translateX(${swipeX}px)`, borderRadius: 'inherit' }}
+      >
+        <div className={`flex ${isGrid ? 'flex-col' : 'flex-row items-center gap-5'}`}>
+          <div className={`relative shrink-0 overflow-hidden ${isGrid ? 'h-40 w-full' : 'size-28 rounded-3xl shadow-lg'}`}>
+            <img src={ex.thumbnail || getMuscleDefaultImage(ex.muscleGroup)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={ex.name} />
+            {isGrid && (
+              <button onClick={(e) => { e.stopPropagation(); onFavorite(); }} className={`absolute top-3 right-3 size-10 rounded-2xl backdrop-blur-md flex items-center justify-center transition-all active:scale-125 ${ex.isFavorite ? 'bg-primary text-black' : 'bg-black/20 text-white'}`}>
+                <span className={`material-symbols-outlined text-xl ${ex.isFavorite ? 'fill-1' : ''}`}>{ex.isFavorite ? 'star' : 'star_border'}</span>
+              </button>
+            )}
+          </div>
+          <div className={`flex-1 min-w-0 ${isGrid ? 'p-6' : 'pr-2'}`}>
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${difficultyStyles[ex.difficulty as keyof typeof difficultyStyles]}`}>{ex.difficulty}</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-black/5">{ex.equipment}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <h4 className={`font-black tracking-tighter leading-tight truncate text-slate-900 dark:text-white ${isGrid ? 'text-lg' : 'text-base'}`}>{ex.name}</h4>
+              <span className={`material-symbols-outlined text-slate-300 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-primary' : ''}`}>expand_more</span>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{ex.muscleGroup} • {ex.category}</p>
+              <div className="flex gap-2">
+                {!isGrid && (
+                  <button onClick={(e) => { e.stopPropagation(); onFavorite(); }} className={`size-8 rounded-lg flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-primary text-black' : 'bg-slate-50 dark:bg-white/5 text-slate-300'}`}>
+                    <span className={`material-symbols-outlined text-[18px] ${ex.isFavorite ? 'fill-1' : ''}`}>{ex.isFavorite ? 'star' : 'star_border'}</span>
+                  </button>
+                )}
+                <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="size-8 rounded-lg bg-slate-50 dark:bg-white/5 text-slate-400 flex items-center justify-center active:bg-primary active:text-black transition-all">
+                  <span className="material-symbols-outlined text-[18px]">edit</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className={`overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${isExpanded ? 'max-h-[350px] opacity-100 mt-6' : 'max-h-0 opacity-0'}`}>
+          <div className="pt-6 border-t border-black/5 dark:border-white/5">
+            {progression.length > 1 ? (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="flex justify-between items-end px-2">
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Inicio</p>
+                      <p className="text-xl font-black">{progression[0].weight} <span className="text-[10px] opacity-40">kg</span></p>
+                    </div>
+                    <div className="w-px h-8 bg-black/5 dark:bg-white/5 self-center"></div>
+                    <div>
+                      <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Actual</p>
+                      <p className="text-xl font-black">{progression[progression.length-1].weight} <span className="text-[10px] opacity-40">kg</span></p>
+                    </div>
+                  </div>
+                  {improvementPercent && (
+                    <div className="bg-primary/10 text-primary-text dark:text-primary px-3 py-1 rounded-full border border-primary/20">
+                      <p className="text-[10px] font-black uppercase tracking-widest">{improvementPercent}% Mejora</p>
+                    </div>
+                  )}
+                </div>
+                <div className="h-44 w-full bg-slate-50/50 dark:bg-background-dark/30 rounded-[2rem] p-4 border border-black/5">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={progression}>
+                      <defs>
+                        <linearGradient id={`colorProg-${ex.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#FFEF0A" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#FFEF0A" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.1} />
+                      <XAxis dataKey="date" hide={false} axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: '900', fill: '#94a3b8' }} padding={{ left: 10, right: 10 }} />
+                      <YAxis hide domain={['dataMin - 5', 'dataMax + 5']} />
+                      <Tooltip cursor={{ stroke: '#FFEF0A', strokeWidth: 2 }} content={({ active, payload }) => { if (active && payload && payload.length) { return (<div className="bg-black text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-2xl border border-white/10">{payload[0].value} kg</div>); } return null; }} />
+                      <Area type="monotone" dataKey="weight" stroke="#FFEF0A" strokeWidth={4} fillOpacity={1} fill={`url(#colorProg-${ex.id})`} dot={{ r: 4, fill: '#FFEF0A', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#000', strokeWidth: 3, stroke: '#FFEF0A' }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            ) : (
+              <div className="h-32 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-100 dark:border-white/5 rounded-[2rem] mx-2">
+                <span className="material-symbols-outlined text-3xl text-slate-200 dark:text-slate-800 mb-2">analytics</span>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed max-w-[180px]">Sin datos suficientes para mostrar progresión.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
