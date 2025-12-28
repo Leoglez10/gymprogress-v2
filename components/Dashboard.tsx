@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, PieChart, Pie, CartesianGrid, AreaChart, Area, Tooltip } from 'recharts';
-import { UserProfile, GoalType, CustomRoutine, CustomExerciseEntry } from '../types';
+import { UserProfile, GoalType, CustomRoutine, WellnessEntry } from '../types';
 import { getVolumeInsight, getTargetVolumeRecommendation } from '../services/geminiService';
 
 interface DashboardProps {
@@ -84,6 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
   const [showFullImage, setShowFullImage] = useState(false);
   const [activeHelp, setActiveHelp] = useState<keyof typeof METRIC_HELP | null>(null);
   const [displayMode, setDisplayMode] = useState<'alias' | 'greeting'>('alias');
+  const [todayWellness, setTodayWellness] = useState<WellnessEntry | null>(null);
   
   useEffect(() => {
     const timer = setInterval(() => {
@@ -99,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
     return '¡Buenas noches!';
   }, []);
 
-  useEffect(() => {
+  const loadData = () => {
     const savedHistory = localStorage.getItem('gymProgress_workout_history');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
 
@@ -112,6 +113,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
       setUserProfile(parsed);
     }
 
+    const savedWellness = localStorage.getItem('gymProgress_daily_wellness');
+    if (savedWellness) {
+      const parsed = JSON.parse(savedWellness);
+      if (parsed.date === new Date().toDateString()) {
+        setTodayWellness(parsed);
+      } else {
+        setTodayWellness(null);
+      }
+    } else {
+      setTodayWellness(null);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
     const savedWidgets = localStorage.getItem('gymProgress_dashboard_widgets_v3');
     if (savedWidgets) {
       try {
@@ -154,44 +170,53 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
   const stats = useMemo(() => {
     const now = new Date();
     const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const prevWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const chronicLimit = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
     
+    // Cálculo ACWR SINCRONIZADO con RiskAnalysis
+    let acuteVolume = 0;
+    let chronicVolume = 0;
+    
+    history.forEach(session => {
+      const sessionDate = new Date(session.date);
+      const vol = Number(session.volume) || 0;
+      if (sessionDate >= startOfWeek) acuteVolume += vol;
+      if (sessionDate >= chronicLimit) chronicVolume += vol;
+    });
+
+    const acwr = (chronicVolume / 4) > 0 ? parseFloat((acuteVolume / (chronicVolume / 4)).toFixed(2)) : 1.0;
+
+    // Enfoque muscular y distribución
+    const muscleMap: Record<string, number> = {};
+    const prevWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const prevMuscleMap: Record<string, number> = {};
+    ALL_MUSCLE_GROUPS.forEach(g => { muscleMap[g] = 0; prevMuscleMap[g] = 0; });
+
     const historyWeek = history.filter(w => new Date(w.date) >= startOfWeek);
     const historyPrevWeek = history.filter(w => {
       const d = new Date(w.date);
       return d >= prevWeekStart && d < startOfWeek;
     });
 
-    const muscleMap: Record<string, number> = {};
-    const prevMuscleMap: Record<string, number> = {};
-    ALL_MUSCLE_GROUPS.forEach(g => { muscleMap[g] = 0; prevMuscleMap[g] = 0; });
-
-    let calculatedTotalVolume = 0;
     historyWeek.forEach(session => {
       session.exercises?.forEach((ex: any) => {
         const exVol = (ex.sets || []).reduce((sAcc: number, sCurr: any) => 
           sAcc + (sCurr.completed ? (Number(sCurr.weight) * Number(sCurr.reps)) : 0), 0);
-        
         const mGroup = ALL_MUSCLE_GROUPS.includes(ex.muscleGroup) ? ex.muscleGroup : 'Core';
         muscleMap[mGroup] = (muscleMap[mGroup] || 0) + exVol;
-        calculatedTotalVolume += exVol;
       });
     });
 
-    let calculatedPrevVolume = 0;
     historyPrevWeek.forEach(session => {
       session.exercises?.forEach((ex: any) => {
         const exVol = (ex.sets || []).reduce((sAcc: number, sCurr: any) => 
           sAcc + (sCurr.completed ? (Number(sCurr.weight) * Number(sCurr.reps)) : 0), 0);
-        
         const mGroup = ALL_MUSCLE_GROUPS.includes(ex.muscleGroup) ? ex.muscleGroup : 'Core';
         prevMuscleMap[mGroup] = (prevMuscleMap[mGroup] || 0) + exVol;
-        calculatedPrevVolume += exVol;
       });
     });
 
-    const totalVolume = calculatedTotalVolume;
-    const prevWeekVolume = calculatedPrevVolume;
+    const totalVolume = acuteVolume;
+    const prevWeekVolume = historyPrevWeek.reduce((acc, curr) => acc + (Number(curr.volume) || 0), 0);
 
     const muscleDist = Object.entries(muscleMap)
       .map(([name, value]) => ({
@@ -203,18 +228,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
       .filter(m => m.value > 0 || totalVolume === 0)
       .sort((a, b) => b.value - a.value);
 
-    // Lógica mejorada: Músculo descuidado
     let neglectedMuscle = ALL_MUSCLE_GROUPS.find(g => (muscleMap[g] || 0) === 0) || 
                           ALL_MUSCLE_GROUPS.sort((a, b) => (muscleMap[a] || 0) - (muscleMap[b] || 0))[0];
 
+    // Récords del mes
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0,0,0,0);
-    const currentMonthHistory = history.filter(h => new Date(h.date) >= startOfMonth);
-
     let monthlyPrCount = 0;
-    currentMonthHistory.forEach(h => { if(h.volume > 0) monthlyPrCount += 1; });
+    history.filter(h => new Date(h.date) >= startOfMonth).forEach(h => { if(h.volume > 0) monthlyPrCount += 1; });
 
+    // Historial de PRs para widget
     const exerciseMaxes: Record<string, number> = {};
     const prRecords: { name: string; weight: number; date: string; timestamp: number }[] = [];
     const chronologicalHistory = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -223,7 +247,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
       session.exercises?.forEach((ex: any) => {
         const maxInSession = Math.max(...(ex.sets || []).filter((s:any) => s.completed).map((s: any) => Number(s.weight) || 0), 0);
         const prevMax = exerciseMaxes[ex.exerciseId] || 0;
-        
         if (maxInSession > prevMax && maxInSession > 0) {
           exerciseMaxes[ex.exerciseId] = maxInSession;
           prRecords.push({
@@ -238,6 +261,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
 
     const recentPrs = prRecords.sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
 
+    // Racha
     const uniqueDates = Array.from(new Set(history.map(h => new Date(h.date).toDateString())))
       .map((d: string) => new Date(d))
       .sort((a, b) => b.getTime() - a.getTime());
@@ -260,7 +284,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
       }
     }
 
-    return { totalVolume, prevWeekVolume, muscleDist, neglectedMuscle, recentPrs, sessionsCount: historyWeek.length, monthlyPrCount, streak };
+    return { totalVolume, prevWeekVolume, muscleDist, neglectedMuscle, recentPrs, sessionsCount: historyWeek.length, monthlyPrCount, streak, acwr };
   }, [history]);
 
   const dynamicGoals = useMemo(() => {
@@ -408,6 +432,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
                 dynamicGoals={dynamicGoals} 
                 chartData={chartData}
                 userProfile={userProfile}
+                todayWellness={todayWellness}
                 onAdjustGoal={() => setShowGoalPlanner(true)}
                 onShowVolumeDetail={() => setShowVolumeDetail(true)}
                 onShowFatigueDetail={() => setShowFatigueDetail(true)}
@@ -433,7 +458,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
       {/* FULL SCREEN IMAGE MODAL - ZOOM EFFECT */}
       {showFullImage && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          {/* Backdrop con desenfoque extremo */}
           <div 
             onClick={() => setShowFullImage(false)} 
             className="absolute inset-0 bg-black/90 backdrop-blur-3xl"
@@ -498,7 +522,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
         />
       )}
       
-      {showFatigueDetail && <FatigueDetailModal onClose={() => setShowFatigueDetail(false)} />}
+      {showFatigueDetail && (
+        <FatigueDetailModal 
+          initialWellness={todayWellness}
+          acwrScore={stats.acwr}
+          onClose={() => {
+            setShowFatigueDetail(false);
+            loadData(); // Recargar datos para el widget
+          }} 
+        />
+      )}
       
       {showGoalPlanner && userProfile && (
         <GoalPlannerModal userProfile={userProfile} onClose={() => setShowGoalPlanner(false)} onSave={(newProfile) => {
@@ -510,12 +543,40 @@ const Dashboard: React.FC<DashboardProps> = ({ onStartWorkout, onStartDirectWork
   );
 };
 
-const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [checklist, setChecklist] = useState({ sleep: false, nutrition: false, hydration: false, stretching: false });
-  const [soreness, setSoreness] = useState(3);
+// --- Sub-components ---
+
+const WellnessSelector: React.FC<{ label: string, icon: string, value: number, onChange: (v: number) => void }> = ({ label, icon, value, onChange }) => (
+  <div className="bg-slate-50 dark:bg-background-dark/30 rounded-[2.5rem] p-6 border border-black/5 flex flex-col items-center">
+    <div className="flex items-center gap-2 mb-4">
+       <span className="material-symbols-outlined text-slate-300 text-2xl">{icon}</span>
+       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{label}</span>
+    </div>
+    <div className="flex gap-2 w-full">
+      {[1, 2, 3].map((num) => (
+        <button 
+          key={num} 
+          onClick={() => onChange(num)}
+          className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all border-2 ${value === num ? 'bg-black dark:bg-white text-white dark:text-black border-transparent shadow-lg scale-105' : 'bg-white dark:bg-white/5 border-transparent text-slate-300'}`}
+        >
+          {num === 1 ? 'Malo' : num === 2 ? 'Ok' : 'Pro'}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const FatigueDetailModal: React.FC<{ initialWellness: WellnessEntry | null, acwrScore: number, onClose: () => void }> = ({ initialWellness, acwrScore, onClose }) => {
+  const [soreness, setSoreness] = useState(initialWellness?.soreness || 3);
+  const [wellnessState, setWellnessState] = useState<WellnessEntry>(initialWellness || {
+    date: new Date().toDateString(),
+    sleep: 2,
+    energy: 2,
+    stress: 2,
+    soreness: 3
+  });
   const [showSorenessHelp, setShowSorenessHelp] = useState(false);
   
-  const acwrValue = 1.15; 
+  const acwrValue = acwrScore; 
   
   const sorenessColor = useMemo(() => {
     if (soreness <= 3) return '#10b981';
@@ -530,14 +591,12 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   }, [soreness]);
 
   const readinessScore = useMemo(() => {
-    let score = 50;
-    if (checklist.sleep) score += 15;
-    if (checklist.nutrition) score += 10;
-    if (checklist.hydration) score += 10;
-    if (checklist.stretching) score += 5;
-    score -= (soreness * 2);
-    return Math.min(100, Math.max(0, score));
-  }, [checklist, soreness]);
+    const s = (wellnessState.sleep / 3) * 35;
+    const e = (wellnessState.energy / 3) * 35;
+    const st = ((4 - wellnessState.stress) / 3) * 15; 
+    const so = ((4 - wellnessState.soreness) / 3) * 15;
+    return Math.round(s + e + st + so);
+  }, [wellnessState]);
 
   const statusLabel = useMemo(() => {
     if (readinessScore > 85) return { 
@@ -566,123 +625,131 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     };
   }, [readinessScore]);
 
+  const handleSaveWellness = () => {
+    localStorage.setItem('gymProgress_daily_wellness', JSON.stringify({
+      ...wellnessState,
+      date: new Date().toDateString()
+    }));
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-3xl flex items-end animate-in fade-in duration-300 p-4 pb-0">
+    <div className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-3xl flex items-end animate-in fade-in duration-300 p-0">
       <div onClick={onClose} className="absolute inset-0"></div>
-      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] p-8 pb-16 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col max-h-[96vh] overflow-y-auto no-scrollbar">
-        <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-8 opacity-40"></div>
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] p-10 pb-16 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col h-[94vh] overflow-y-auto no-scrollbar">
+        <div className="w-20 h-2 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-10 opacity-40 shrink-0"></div>
         
-        <div className="flex items-center justify-between mb-8 px-2">
+        <div className="flex items-center justify-between mb-10 px-2 shrink-0">
           <div>
-            <h3 className="text-3xl font-black tracking-tighter leading-none">Centro de Salud</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Estado de Recuperación</p>
+            <h3 className="text-4xl font-black tracking-tighter leading-none">Status Vital</h3>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-[0.25em] mt-3">Centro de Salud e IA</p>
           </div>
-          <button onClick={onClose} className="size-14 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 active:scale-90 transition-all">
-            <span className="material-symbols-outlined text-3xl">close</span>
+          <button onClick={onClose} className="size-16 rounded-[2rem] bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 active:scale-90 transition-all shadow-sm">
+            <span className="material-symbols-outlined text-4xl">close</span>
           </button>
         </div>
 
-        <div className="bg-slate-50 dark:bg-background-dark/50 rounded-[3rem] p-8 mb-8 border border-black/5 flex flex-col items-center">
-           <div className="relative mb-6 flex flex-col items-center">
-              <svg className="w-48 h-24" viewBox="0 0 100 50">
+        <div className="bg-slate-50 dark:bg-background-dark/50 rounded-[3.5rem] p-10 mb-10 border border-black/5 flex flex-col items-center shrink-0">
+           <div className="relative mb-8 flex flex-col items-center">
+              <svg className="w-64 h-32" viewBox="0 0 100 50">
                  <path d="M 10 45 A 35 35 0 0 1 90 45" fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" />
                  <path 
                     d="M 10 45 A 35 35 0 0 1 90 45" 
                     fill="none" stroke={statusLabel.bg.replace('bg-', '#')} strokeWidth="8" strokeLinecap="round" 
                     strokeDasharray="125.6" 
-                    strokeDashoffset={125.6 - (125.6 * (acwrValue / 2))}
+                    strokeDashoffset={125.6 - (125.6 * (Math.min(2.0, acwrValue) / 2))}
                     className="transition-all duration-1000"
                  />
               </svg>
               <div className="absolute bottom-0 text-center">
-                 <p className="text-4xl font-black tabular-nums tracking-tighter">{acwrValue}</p>
-                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest -mt-1">Ratio ACWR</p>
+                 <p className="text-6xl font-black tabular-nums tracking-tighter">{acwrValue.toFixed(2)}</p>
+                 <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest -mt-1">Fatiga ACWR</p>
               </div>
            </div>
-           <div className={`px-4 py-1.5 rounded-full border-2 ${statusLabel.color} border-current font-black text-[10px] uppercase tracking-widest animate-pulse`}>
-              Estado: {statusLabel.label}
+           <div className={`px-6 py-2.5 rounded-full border-2 ${statusLabel.color} border-current font-black text-[12px] uppercase tracking-widest animate-pulse`}>
+              RECUPERACIÓN: {statusLabel.label}
            </div>
         </div>
 
-        <div className="space-y-6 mb-8">
-           <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-2">Checklist de Hoy</h4>
-           <div className="grid grid-cols-2 gap-4">
-              <CheckItem 
-                icon="bedtime" label="Sueño 7h+" active={checklist.sleep} 
-                onClick={() => setChecklist({...checklist, sleep: !checklist.sleep})} 
+        <div className="space-y-8 mb-10">
+           <h4 className="text-[12px] font-black uppercase text-slate-400 tracking-widest px-2">Factores Biométricos</h4>
+           <div className="grid grid-cols-2 gap-5">
+              <WellnessSelector 
+                label="Sueño" icon="bedtime" value={wellnessState.sleep} 
+                onChange={(v) => setWellnessState({...wellnessState, sleep: v})}
               />
-              <CheckItem 
-                icon="restaurant" label="Proteína OK" active={checklist.nutrition} 
-                onClick={() => setChecklist({...checklist, nutrition: !checklist.nutrition})} 
+              <WellnessSelector 
+                label="Energía" icon="bolt" value={wellnessState.energy} 
+                onChange={(v) => setWellnessState({...wellnessState, energy: v})}
               />
-              <CheckItem 
-                icon="water_drop" label="Hidratación" active={checklist.hydration} 
-                onClick={() => setChecklist({...checklist, hydration: !checklist.hydration})} 
+              <WellnessSelector 
+                label="Estrés" icon="psychology" value={wellnessState.stress} 
+                onChange={(v) => setWellnessState({...wellnessState, stress: v})}
               />
-              <CheckItem 
-                icon="self_improvement" label="Movilidad" active={checklist.stretching} 
-                onClick={() => setChecklist({...checklist, stretching: !checklist.stretching})} 
+              <WellnessSelector 
+                label="Dolor" icon="personal_injury" value={wellnessState.soreness} 
+                onChange={(v) => setWellnessState({...wellnessState, soreness: v})}
               />
            </div>
         </div>
 
-        <div className="bg-slate-50 dark:bg-background-dark/50 p-8 rounded-[3rem] mb-10 border border-black/5 flex flex-col items-center">
-           <div className="flex items-center justify-center gap-2 mb-6">
-              <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Nivel de Agujetas</h4>
+        <div className="bg-slate-50 dark:bg-background-dark/50 p-10 rounded-[3.5rem] mb-12 border border-black/5 flex flex-col items-center">
+           <div className="flex items-center justify-center gap-3 mb-8">
+              <h4 className="text-[11px] font-black uppercase text-slate-400 tracking-[0.25em]">Cansancio Muscular</h4>
               <button 
                 onClick={() => setShowSorenessHelp(!showSorenessHelp)}
-                className={`size-6 flex items-center justify-center rounded-full transition-all active:scale-75 ${showSorenessHelp ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500'}`}
+                className={`size-8 flex items-center justify-center rounded-xl transition-all active:scale-75 ${showSorenessHelp ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500'}`}
               >
-                <span className="material-symbols-outlined text-[16px] font-bold">help</span>
+                <span className="material-symbols-outlined text-[18px] font-bold">help</span>
               </button>
            </div>
 
            {showSorenessHelp && (
-              <div className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-emerald-500/20 shadow-sm mb-6 animate-in slide-in-from-top-2">
-                <p className="text-[11px] font-bold text-slate-500 leading-relaxed italic text-center">
-                  Indica el dolor muscular residual. Evalúa cuánto te molesta mover o presionar el músculo trabajado anteriormente.
+              <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-emerald-500/20 shadow-sm mb-8 animate-in slide-in-from-top-2">
+                <p className="text-sm font-bold text-slate-500 leading-relaxed italic text-center">
+                  ¿Cuánto te duelen los músculos hoy? <br/> 1 = Fresco, 10 = Extenuado.
                 </p>
               </div>
            )}
 
-           <span className={`text-5xl font-black tabular-nums tracking-tighter transition-colors duration-300 ${sorenessColorClass}`}>
-             {soreness}<span className="text-lg text-slate-300">/10</span>
+           <span className={`text-7xl font-black tabular-nums tracking-tighter transition-colors duration-300 ${sorenessColorClass}`}>
+             {wellnessState.soreness}<span className="text-2xl text-slate-300">/10</span>
            </span>
 
-           <div className="w-full px-4 mt-6">
+           <div className="w-full px-4 mt-8">
               <input 
-                  type="range" min="1" max="10" value={soreness} 
-                  onChange={(e) => setSoreness(parseInt(e.target.value))}
+                  type="range" min="1" max="10" value={wellnessState.soreness} 
+                  onChange={(e) => setWellnessState({...wellnessState, soreness: parseInt(e.target.value)})}
                   style={{ accentColor: sorenessColor } as any}
-                  className="w-full h-4 bg-slate-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer" 
+                  className="w-full h-6 bg-slate-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer" 
               />
-              <div className="flex justify-between mt-3 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  <span className={soreness <= 3 ? 'text-emerald-500' : ''}>Fresco</span>
-                  <span className={soreness >= 8 ? 'text-red-500' : ''}>Dolorido</span>
+              <div className="flex justify-between mt-5 px-1 text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                  <span className={wellnessState.soreness <= 3 ? 'text-emerald-500' : ''}>LISTO</span>
+                  <span className={wellnessState.soreness >= 8 ? 'text-red-500' : ''}>FATIGADO</span>
               </div>
            </div>
         </div>
 
-        <div className={`p-10 rounded-[4rem] mb-12 shadow-2xl flex items-center justify-between overflow-hidden relative mx-2 min-h-[140px] transition-all duration-500 ${statusLabel.bg} ${statusLabel.textColor}`}>
+        <div className={`p-12 rounded-[4.5rem] mb-16 shadow-2xl flex items-center justify-between overflow-hidden relative mx-1 min-h-[160px] transition-all duration-700 ${statusLabel.bg} ${statusLabel.textColor}`}>
            <div className={`absolute top-0 left-0 h-full opacity-30 transition-all duration-1000 bg-white/40`} style={{ width: `${readinessScore}%` }}></div>
            <div className="relative z-10 flex flex-col">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70 mb-1">Ready Score</p>
-              <p className="text-6xl font-black tabular-nums tracking-tighter leading-none">{readinessScore}%</p>
+              <p className="text-[12px] font-black uppercase tracking-[0.3em] opacity-80 mb-2">Ready Score</p>
+              <p className="text-7xl font-black tabular-nums tracking-tighter leading-none">{readinessScore}%</p>
            </div>
            <div className="relative z-10 text-right ml-4">
-              <p className="text-sm font-black leading-tight max-w-[150px] uppercase italic">
-                {readinessScore > 70 ? 'Cuerpo en estado óptimo. Máxima intensidad.' : 'Fatiga detectada. Considera una descarga técnica.'}
+              <p className="text-lg font-black leading-tight max-w-[160px] uppercase italic">
+                {readinessScore > 70 ? 'CUERPO DE ÉLITE' : 'CONTROL TÉCNICO'}
               </p>
            </div>
         </div>
 
-        <div className="px-10 pb-6">
+        <div className="px-2 pb-6">
           <button 
-            onClick={onClose}
-            className={`w-full min-h-[85px] rounded-full text-white font-black text-xl active:scale-[0.97] transition-all shadow-2xl uppercase tracking-[0.25em] flex items-center justify-center gap-3 border-4 border-white/20 ${statusLabel.bg}`}
+            onClick={handleSaveWellness}
+            className={`w-full min-h-[100px] rounded-full text-white font-black text-2xl active:scale-[0.97] transition-all shadow-2xl uppercase tracking-[0.25em] flex items-center justify-center gap-4 border-4 border-white/20 ${statusLabel.bg}`}
           >
-            <span className="material-symbols-outlined font-black text-3xl">offline_bolt</span>
-            LISTO PARA ENTRENAR
+            <span className="material-symbols-outlined font-black text-4xl">check_circle</span>
+            GUARDAR REGISTRO
           </button>
         </div>
       </div>
@@ -690,15 +757,271 @@ const FatigueDetailModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
-const CheckItem: React.FC<{ icon: string, label: string, active: boolean, onClick: () => void }> = ({ icon, label, active, onClick }) => (
-  <button 
-    onClick={onClick}
-    className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all active:scale-95 text-left h-20 ${active ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white dark:bg-surface-dark border-black/5 text-slate-400'}`}
-  >
-    <span className={`material-symbols-outlined text-xl ${active ? 'fill-1' : ''}`}>{icon}</span>
-    <span className="text-[10px] font-black uppercase tracking-tighter leading-tight">{label}</span>
-  </button>
+const WellnessCard: React.FC<{ 
+  label: string; 
+  icon: string; 
+  value: number; 
+  options: string[]; 
+  colors: string[];
+  onChange: (v: number) => void;
+}> = ({ label, icon, value, options, colors, onChange }) => (
+  <div className="bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 shadow-md border border-black/5 flex flex-col items-center">
+    <div className="flex items-center gap-2 mb-5">
+       <span className="material-symbols-outlined text-slate-300 text-xl">{icon}</span>
+       <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{label}</span>
+    </div>
+    
+    <div className="flex flex-col w-full gap-2">
+      {[1, 2, 3].map((num, i) => (
+        <button
+          key={num}
+          onClick={() => onChange(num)}
+          className={`py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 transition-all active:scale-95 ${
+            value === num 
+              ? `bg-black dark:bg-white ${colors[i]} border-transparent shadow-lg scale-105` 
+              : 'bg-slate-50 dark:bg-white/5 border-transparent text-slate-300'
+          }`}
+        >
+          {options[i]}
+        </button>
+      ))}
+    </div>
+  </div>
 );
+
+// Define WidgetContent only once.
+const WidgetContent: React.FC<{ 
+  id: string; 
+  stats: any; 
+  dynamicGoals: any[]; 
+  chartData: any; 
+  userProfile: UserProfile | null;
+  todayWellness: WellnessEntry | null;
+  onAdjustGoal: () => void;
+  onShowVolumeDetail: () => void;
+  onShowFatigueDetail: () => void;
+  onShowHelp: (metric: keyof typeof METRIC_HELP) => void;
+  onViewStats?: () => void;
+  onStartWorkout?: () => void;
+  onStartDirectWorkout?: (routine: CustomRoutine) => void;
+}> = ({ id, stats, dynamicGoals, chartData, userProfile, todayWellness, onAdjustGoal, onShowVolumeDetail, onShowFatigueDetail, onShowHelp, onViewStats, onStartWorkout, onStartDirectWorkout }) => {
+  const [activeGoalIdx, setActiveGoalIdx] = useState(0);
+  const [isMuscleExpanded, setIsMuscleExpanded] = useState(false);
+
+  useEffect(() => {
+    if (activeGoalIdx >= dynamicGoals.length && dynamicGoals.length > 0) setActiveGoalIdx(0);
+  }, [dynamicGoals.length]);
+
+  const readinessScore = useMemo(() => {
+    if (!todayWellness) return null;
+    const s = (todayWellness.sleep / 3) * 35;
+    const e = (todayWellness.energy / 3) * 35;
+    const st = ((4 - todayWellness.stress) / 3) * 15; 
+    const so = ((4 - todayWellness.soreness) / 3) * 15;
+    return Math.round(s + e + st + so);
+  }, [todayWellness]);
+
+  const readinessInfo = useMemo(() => {
+    if (readinessScore === null) return null;
+    if (readinessScore > 80) return { label: 'Atleta Pro', color: 'text-blue-500' };
+    if (readinessScore > 60) return { label: 'Zona Óptima', color: 'text-emerald-500' };
+    if (readinessScore > 40) return { label: 'Precaución', color: 'text-amber-500' };
+    return { label: 'Riesgo Alto', color: 'text-rose-500' };
+  }, [readinessScore]);
+
+  const muscleSuggestion = useMemo(() => {
+    if (stats.totalVolume === 0) return "Aún no hay registros esta semana. ¡Empieza una rutina para ver tu balance!";
+    
+    const topMuscle = stats.muscleDist[0];
+    const neglected = stats.neglectedMuscle;
+    
+    if (topMuscle && topMuscle.percent > 45) {
+      return `Dominancia crítica en ${topMuscle.name.toUpperCase()} (${topMuscle.percent}%). Considera priorizar ${neglected.toUpperCase()} para prevenir desequilibrios posturales.`;
+    }
+    
+    if (neglected) {
+      return `Tu enfoque en ${topMuscle?.name || 'músculo'} es sólido. No olvides dar amor a ${neglected.toUpperCase()} esta semana para un físico compensado.`;
+    }
+    
+    return "Distribución equilibrada detectada. Mantén la variedad en tus patrones de movimiento.";
+  }, [stats.muscleDist, stats.neglectedMuscle, stats.totalVolume]);
+
+  switch (id) {
+    case 'goal':
+      const currentGoal = dynamicGoals[activeGoalIdx] || dynamicGoals[0];
+      if (!currentGoal) return <div className="bg-black dark:bg-zinc-900 rounded-[4rem] p-12 text-white min-h-[460px] flex flex-col items-center justify-center gap-6 text-center"><span className="material-symbols-outlined text-6xl text-slate-700">ads_click</span><h3 className="text-2xl font-black">Sin Metas</h3><button onClick={onAdjustGoal} className="px-10 py-4 bg-primary text-black rounded-full text-xs font-black uppercase tracking-widest">Configurar</button></div>;
+      return (
+        <div className="relative rounded-[4rem] p-10 text-white min-h-[460px] flex flex-col items-center justify-center gap-8 shadow-sm border border-white/5 overflow-hidden transition-all duration-1000 bg-black dark:bg-zinc-900">
+          <div className="relative size-60 shrink-0 flex items-center justify-center cursor-pointer select-none group active:scale-95 transition-all duration-300" onClick={() => setActiveGoalIdx((prev) => (prev + 1) % dynamicGoals.length)}>
+            <svg className="size-full transform -rotate-90 absolute top-0 left-0" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.06)" strokeWidth="7" fill="transparent" />
+              <circle cx="50" cy="50" r="44" stroke={currentGoal.color} strokeWidth="7" fill="transparent" strokeDasharray="276.46" strokeDashoffset={276.46 - (276.46 * currentGoal.progress) / 100} strokeLinecap="round" className="transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"/>
+            </svg>
+            <div className="flex flex-col items-center justify-center z-10 animate-in zoom-in-95 duration-500" key={currentGoal.id}>
+              <div className="relative mb-2"><span className="material-symbols-outlined text-4xl" style={{ color: currentGoal.color }}>{currentGoal.icon}</span></div>
+              <span className="text-7xl font-black tabular-nums tracking-tighter leading-none">{currentGoal.progress}%</span>
+            </div>
+          </div>
+          <div className="text-center z-10 animate-in fade-in slide-in-from-bottom-2 duration-700" key={currentGoal.label}>
+            <h3 className="text-3xl font-black tracking-tight mb-2 text-white/95">{currentGoal.label}</h3>
+            <p className="text-slate-400 text-base font-bold tracking-tight">{currentGoal.current.toLocaleString()} <span className="text-xs uppercase opacity-60">de</span> {currentGoal.target.toLocaleString()} <span className="text-xs uppercase opacity-60">{currentGoal.unit}</span></p>
+            <div className="justify-center gap-3 mt-10 flex items-center">{dynamicGoals.map((_, i) => (<button key={i} onClick={(e) => { e.stopPropagation(); setActiveGoalIdx(i); }} className={`h-2 rounded-full transition-all duration-500 ${activeGoalIdx === i ? 'w-10 bg-current' : 'w-2 bg-white/10 hover:bg-white/20'}`} style={{ color: currentGoal.color }}/>))}</div>
+          </div>
+          <div className="absolute bottom-6 flex items-center gap-2 opacity-20 group-hover:opacity-50 transition-opacity"><span className="material-symbols-outlined text-xs">touch_app</span><span className="text-[8px] font-black uppercase tracking-[0.3em]">Tocar para rotar</span></div>
+        </div>
+      );
+    case 'quick_stats':
+      return (
+        <div className="grid grid-cols-2 gap-5 animate-in fade-in min-h-0">
+          <button onClick={() => onViewStats?.()} className="bg-white dark:bg-surface-dark rounded-[3.5rem] p-8 border border-black/5 shadow-xl flex flex-col justify-center aspect-square text-left active:scale-95 transition-all">
+             <div className="size-16 rounded-2xl bg-orange-100 dark:bg-orange-950/30 text-orange-500 flex items-center justify-center mb-6 shadow-inner"><span className="material-symbols-outlined font-black text-4xl">local_fire_department</span></div>
+             <MetricLabelHelp label="Racha" metric="racha" onShowHelp={onShowHelp} />
+             <p className="text-4xl font-black tabular-nums mt-1 tracking-tighter">{stats.streak} Días</p>
+          </button>
+          <button onClick={() => onViewStats?.()} className="bg-white dark:bg-surface-dark rounded-[3.5rem] p-8 border border-black/5 shadow-xl flex flex-col justify-center aspect-square text-left active:scale-95 transition-all">
+             <div className="size-16 rounded-2xl bg-blue-100 dark:bg-blue-950/30 text-blue-500 flex items-center justify-center mb-6 shadow-inner"><span className="material-symbols-outlined font-black text-4xl">calendar_month</span></div>
+             <MetricLabelHelp label="Sesiones" metric="sesiones" onShowHelp={onShowHelp} />
+             <p className="text-4xl font-black tabular-nums mt-1 tracking-tighter">{stats.sessionsCount}/sem</p>
+          </button>
+        </div>
+      );
+    case 'volume_chart':
+      return (
+        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 shadow-xl border border-black/5 animate-in fade-in relative min-h-0">
+          <div className="flex justify-between items-start mb-10">
+            <div><MetricLabelHelp label="Volumen Semanal" metric="volumen" onShowHelp={onShowHelp} /><h4 className="text-5xl font-black tracking-tighter tabular-nums leading-none mt-1">{stats.totalVolume.toLocaleString()} <span className="text-lg text-slate-300 font-black ml-1">kg</span></h4></div>
+            <button onClick={onShowVolumeDetail} className="size-14 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xl hover:rotate-12 transition-all"><span className="material-symbols-outlined text-2xl font-black">query_stats</span></button>
+          </div>
+          <div className="h-56 w-full cursor-pointer" onClick={onShowVolumeDetail}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <Bar dataKey="volume" radius={[14, 14, 14, 14]} barSize={40}>
+                  {chartData.map((entry: any, idx: number) => <Cell key={`c-${idx}`} fill={entry.isReal ? '#FFEF0A' : '#f1f5f9'} />)}
+                </Bar>
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: '900', fill: '#94a3b8'}} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+    case 'fatigue_risk':
+      return (
+        <button 
+          onClick={onShowFatigueDetail} 
+          className={`w-full rounded-[4rem] p-10 border flex items-center justify-between animate-in fade-in shadow-xl text-left active:scale-95 transition-all overflow-hidden relative ${
+            !todayWellness 
+              ? 'bg-white dark:bg-surface-dark border-primary/40 ring-4 ring-primary/5 animate-pulse' 
+              : 'bg-white dark:bg-surface-dark border-black/5'
+          }`}
+        >
+          {readinessScore !== null && (
+             <div className="absolute top-0 left-0 h-full bg-emerald-500/5 transition-all duration-1000" style={{ width: `${readinessScore}%` }}></div>
+          )}
+          
+          <div className="flex items-center gap-8 relative z-10">
+            <div className={`size-20 rounded-[2.2rem] flex items-center justify-center shadow-inner ${!todayWellness ? 'bg-primary/20 text-primary-text' : 'bg-green-500/10 text-green-500'}`}>
+              <span className={`material-symbols-outlined text-4xl font-black ${!todayWellness ? 'animate-bounce' : 'animate-pulse'}`}>
+                {!todayWellness ? 'add_circle' : 'ecg_heart'}
+              </span>
+            </div>
+            <div>
+              <h4 className="font-black text-2xl tracking-tighter leading-none">
+                {!todayWellness ? 'Salud Pendiente' : readinessInfo?.label}
+              </h4>
+              <p className={`text-xs font-black uppercase tracking-widest mt-2 ${!todayWellness ? 'text-primary-text dark:text-primary' : 'text-slate-400'}`}>
+                {!todayWellness ? '¡REGISTRAR HOY!' : `Ready: ${readinessScore}% • ACWR: ${stats.acwr.toFixed(2)}`}
+              </p>
+            </div>
+          </div>
+          <span className={`material-symbols-outlined text-4xl font-black relative z-10 ${!todayWellness ? 'text-primary' : 'text-slate-200'}`}>
+            {!todayWellness ? 'priority_high' : 'chevron_right'}
+          </span>
+        </button>
+      );
+    case 'muscle_dist':
+      return (
+        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 border border-black/5 animate-in fade-in shadow-xl min-h-0 relative group">
+          <div className="flex items-center justify-between mb-8">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em]">Foco Muscular</h4>
+            <button 
+              onClick={() => setIsMuscleExpanded(!isMuscleExpanded)}
+              className="size-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center active:scale-90 transition-all border border-black/5"
+            >
+              <span className="material-symbols-outlined text-slate-400 text-xl font-black">{isMuscleExpanded ? 'close_fullscreen' : 'open_in_full'}</span>
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-10 mb-8">
+            <div className="size-40 shrink-0">
+              <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stats.muscleDist.length > 0 ? stats.muscleDist : [{value: 1}]} innerRadius={40} outerRadius={65} paddingAngle={8} dataKey="value" stroke="none">{stats.muscleDist.map((_: any, i: number) => <Cell key={i} fill={['#FFEF0A', '#E6D709', '#CCBF08', '#B3A707', '#998F06'][i % 5]} />)}{stats.muscleDist.length === 0 && <Cell fill="#f1f5f9" />}</Pie></PieChart></ResponsiveContainer>
+            </div>
+            <div className="flex-1 space-y-5 min-w-0">
+              {stats.muscleDist.slice(0, isMuscleExpanded ? 8 : 3).map((item: any) => (
+                <div key={item.name} className="flex flex-col gap-1.5 group/item">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                    <div className="flex items-center gap-1.5 truncate">
+                       <span className="text-slate-400 truncate">{item.name}</span>
+                       <span className={`material-symbols-outlined text-[12px] font-black ${item.trend === 'up' ? 'text-green-500' : item.trend === 'down' ? 'text-red-400' : 'text-slate-300'}`}>
+                         {item.trend === 'up' ? 'trending_up' : item.trend === 'down' ? 'trending_down' : 'remove'}
+                       </span>
+                    </div>
+                    <span className="text-slate-950 dark:text-white font-black">{item.percent}%</span>
+                  </div>
+                  <div className="h-2.5 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden shadow-inner">
+                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${item.percent}%` }}></div>
+                  </div>
+                  {stats.neglectedMuscle === item.name && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="size-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                      <span className="text-[7px] font-black text-orange-500 uppercase tracking-[0.15em]">Sugerencia: Priorizar</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <div className="p-5 rounded-[2rem] bg-slate-50 dark:bg-background-dark/50 border border-black/5 flex items-center gap-4">
+             <div className="size-12 rounded-xl bg-primary/20 text-primary-text flex items-center justify-center shrink-0"><span className="material-symbols-outlined font-black">psychology</span></div>
+             <p className="text-[10px] font-bold text-slate-500 leading-tight">
+                {muscleSuggestion}
+             </p>
+          </div>
+        </div>
+      );
+    case 'recent_prs':
+      return (
+        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 border border-black/5 animate-in fade-in shadow-xl min-h-0">
+          <div className="flex items-center justify-between mb-8">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Últimos Hitos</h4>
+            <span className="material-symbols-outlined text-primary text-2xl fill-1">stars</span>
+          </div>
+          <div className="space-y-6">
+            {stats.recentPrs.length > 0 ? stats.recentPrs.map((pr: any, i: number) => (
+              <div key={i} className="flex items-center gap-6 animate-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${i * 150}ms` }}>
+                <div className="size-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-inner">
+                  <span className="material-symbols-outlined text-2xl font-black">bolt</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <p className="font-black text-lg truncate tracking-tight text-slate-900 dark:text-white leading-none">{pr.name}</p>
+                    <p className="text-[9px] font-black text-primary bg-black dark:bg-white/10 px-2 py-0.5 rounded-md uppercase shrink-0 ml-2">{pr.date}</p>
+                  </div>
+                  <p className="text-sm font-bold text-slate-400 mt-1.5 uppercase tracking-[0.15em]">{pr.weight} {userProfile?.weightUnit || 'kg'}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center py-6">
+                <span className="material-symbols-outlined text-slate-200 dark:text-white/5 text-5xl mb-3 block">military_tech</span>
+                <p className="text-sm text-slate-400 font-bold italic tracking-wide px-4">¡Sigue entrenando para ver tus récords aquí!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    default: return null;
+  }
+};
 
 const VolumeDetailModal: React.FC<{ chartData: any[], totalVolume: number, prevVolume: number, userProfile: UserProfile, onClose: () => void }> = ({ chartData, totalVolume, prevVolume, userProfile, onClose }) => {
   const [aiInsight, setAiInsight] = useState<string | null>(null);
@@ -733,7 +1056,7 @@ const VolumeDetailModal: React.FC<{ chartData: any[], totalVolume: number, prevV
     <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-3xl flex items-end animate-in fade-in duration-300">
       <div onClick={onClose} className="absolute inset-0"></div>
       
-      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-500 relative overflow-hidden">
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-500 relative">
         <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-6 mb-2 opacity-40"></div>
         
         <div className="flex items-center justify-between px-8 py-6">
@@ -838,7 +1161,6 @@ const GoalPlannerModal: React.FC<{ userProfile: UserProfile, onClose: () => void
     setLocalProfile({ ...localProfile, goalSettings: { ...localProfile.goalSettings, activeGoals: next } });
   };
 
-  // Valor actual basado en la pestaña activa
   const currentValue = useMemo(() => {
     if (activeTab === 'sessions') return localProfile.goalSettings.targetSessionsPerMonth;
     if (activeTab === 'prs') return localProfile.goalSettings.targetPRsPerMonth;
@@ -963,7 +1285,6 @@ const GoalPlannerModal: React.FC<{ userProfile: UserProfile, onClose: () => void
               
               <div className={`overflow-hidden transition-all duration-500 ease-in-out w-full ${showVolumeHelp && activeTab === 'volume' ? 'max-h-[800px] opacity-100 mt-2' : 'max-h-0 opacity-0 pointer-events-none'}`}>
                 <div className="space-y-4">
-                  {/* EXPLICACIÓN BÁSICA - NIVEL PRINCIPIANTE */}
                   <div className="bg-slate-50 dark:bg-background-dark/50 p-6 rounded-[2.5rem] border border-black/5 shadow-inner">
                      <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center gap-2">
                        <span className="material-symbols-outlined text-sm">lightbulb</span>
@@ -975,7 +1296,6 @@ const GoalPlannerModal: React.FC<{ userProfile: UserProfile, onClose: () => void
                      </p>
                   </div>
 
-                  {/* ASISTENTE IA - NIVEL PRO/CIENTÍFICO */}
                   <div className="bg-primary/5 p-6 rounded-[2.5rem] border-2 border-primary/20 shadow-sm space-y-4">
                      <div className="flex items-center justify-between">
                         <h4 className="text-[10px] font-black uppercase text-primary-text dark:text-primary tracking-widest flex items-center gap-2">
@@ -1038,197 +1358,6 @@ const GoalPlannerModal: React.FC<{ userProfile: UserProfile, onClose: () => void
       </div>
     </div>
   );
-};
-
-const WidgetContent: React.FC<{ 
-  id: string; 
-  stats: any; 
-  dynamicGoals: any[]; 
-  chartData: any; 
-  userProfile: UserProfile | null;
-  onAdjustGoal: () => void;
-  onShowVolumeDetail: () => void;
-  onShowFatigueDetail: () => void;
-  onShowHelp: (metric: keyof typeof METRIC_HELP) => void;
-  onViewStats?: () => void;
-  onStartWorkout?: () => void;
-  onStartDirectWorkout?: (routine: CustomRoutine) => void;
-}> = ({ id, stats, dynamicGoals, chartData, userProfile, onAdjustGoal, onShowVolumeDetail, onShowFatigueDetail, onShowHelp, onViewStats, onStartWorkout, onStartDirectWorkout }) => {
-  const [activeGoalIdx, setActiveGoalIdx] = useState(0);
-  const [isMuscleExpanded, setIsMuscleExpanded] = useState(false);
-
-  useEffect(() => {
-    if (activeGoalIdx >= dynamicGoals.length && dynamicGoals.length > 0) setActiveGoalIdx(0);
-  }, [dynamicGoals.length]);
-
-  const muscleSuggestion = useMemo(() => {
-    if (stats.totalVolume === 0) return "Aún no hay registros esta semana. ¡Empieza una rutina para ver tu balance!";
-    
-    const topMuscle = stats.muscleDist[0];
-    const neglected = stats.neglectedMuscle;
-    
-    if (topMuscle && topMuscle.percent > 45) {
-      return `Dominancia crítica en ${topMuscle.name.toUpperCase()} (${topMuscle.percent}%). Considera priorizar ${neglected.toUpperCase()} para prevenir desequilibrios posturales.`;
-    }
-    
-    if (neglected) {
-      return `Tu enfoque en ${topMuscle?.name || 'músculo'} es sólido. No olvides dar amor a ${neglected.toUpperCase()} esta semana para un físico compensado.`;
-    }
-    
-    return "Distribución equilibrada detectada. Mantén la variedad en tus patrones de movimiento.";
-  }, [stats.muscleDist, stats.neglectedMuscle, stats.totalVolume]);
-
-  switch (id) {
-    case 'goal':
-      const currentGoal = dynamicGoals[activeGoalIdx] || dynamicGoals[0];
-      if (!currentGoal) return <div className="bg-black dark:bg-zinc-900 rounded-[4rem] p-12 text-white min-h-[460px] flex flex-col items-center justify-center gap-6 text-center"><span className="material-symbols-outlined text-6xl text-slate-700">ads_click</span><h3 className="text-2xl font-black">Sin Metas</h3><button onClick={onAdjustGoal} className="px-10 py-4 bg-primary text-black rounded-full text-xs font-black uppercase tracking-widest">Configurar</button></div>;
-      return (
-        <div className="relative rounded-[4rem] p-10 text-white min-h-[460px] flex flex-col items-center justify-center gap-8 shadow-sm border border-white/5 overflow-hidden transition-all duration-1000 bg-black dark:bg-zinc-900">
-          <div className="relative size-60 shrink-0 flex items-center justify-center cursor-pointer select-none group active:scale-95 transition-all duration-300" onClick={() => setActiveGoalIdx((prev) => (prev + 1) % dynamicGoals.length)}>
-            <svg className="size-full transform -rotate-90 absolute top-0 left-0" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.06)" strokeWidth="7" fill="transparent" />
-              <circle cx="50" cy="50" r="44" stroke={currentGoal.color} strokeWidth="7" fill="transparent" strokeDasharray="276.46" strokeDashoffset={276.46 - (276.46 * currentGoal.progress) / 100} strokeLinecap="round" className="transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"/>
-            </svg>
-            <div className="flex flex-col items-center justify-center z-10 animate-in zoom-in-95 duration-500" key={currentGoal.id}>
-              <div className="relative mb-2"><span className="material-symbols-outlined text-4xl" style={{ color: currentGoal.color }}>{currentGoal.icon}</span></div>
-              <span className="text-7xl font-black tabular-nums tracking-tighter leading-none">{currentGoal.progress}%</span>
-            </div>
-          </div>
-          <div className="text-center z-10 animate-in fade-in slide-in-from-bottom-2 duration-700" key={currentGoal.label}>
-            <h3 className="text-3xl font-black tracking-tight mb-2 text-white/95">{currentGoal.label}</h3>
-            <p className="text-slate-400 text-base font-bold tracking-tight">{currentGoal.current.toLocaleString()} <span className="text-xs uppercase opacity-60">de</span> {currentGoal.target.toLocaleString()} <span className="text-xs uppercase opacity-60">{currentGoal.unit}</span></p>
-            <div className="justify-center gap-3 mt-10 flex items-center">{dynamicGoals.map((_, i) => (<button key={i} onClick={(e) => { e.stopPropagation(); setActiveGoalIdx(i); }} className={`h-2 rounded-full transition-all duration-500 ${activeGoalIdx === i ? 'w-10 bg-current' : 'w-2 bg-white/10 hover:bg-white/20'}`} style={{ color: currentGoal.color }}/>))}</div>
-          </div>
-          <div className="absolute bottom-6 flex items-center gap-2 opacity-20 group-hover:opacity-50 transition-opacity"><span className="material-symbols-outlined text-xs">touch_app</span><span className="text-[8px] font-black uppercase tracking-[0.3em]">Tocar para rotar</span></div>
-        </div>
-      );
-    case 'quick_stats':
-      return (
-        <div className="grid grid-cols-2 gap-5 animate-in fade-in min-h-0">
-          <button onClick={() => onViewStats?.()} className="bg-white dark:bg-surface-dark rounded-[3.5rem] p-8 border border-black/5 shadow-xl flex flex-col justify-center aspect-square text-left active:scale-95 transition-all">
-             <div className="size-16 rounded-2xl bg-orange-100 dark:bg-orange-950/30 text-orange-500 flex items-center justify-center mb-6 shadow-inner"><span className="material-symbols-outlined font-black text-4xl">local_fire_department</span></div>
-             <MetricLabelHelp label="Racha" metric="racha" onShowHelp={onShowHelp} />
-             <p className="text-4xl font-black tabular-nums mt-1 tracking-tighter">{stats.streak} Días</p>
-          </button>
-          <button onClick={() => onViewStats?.()} className="bg-white dark:bg-surface-dark rounded-[3.5rem] p-8 border border-black/5 shadow-xl flex flex-col justify-center aspect-square text-left active:scale-95 transition-all">
-             <div className="size-16 rounded-2xl bg-blue-100 dark:bg-blue-950/30 text-blue-500 flex items-center justify-center mb-6 shadow-inner"><span className="material-symbols-outlined font-black text-4xl">calendar_month</span></div>
-             <MetricLabelHelp label="Sesiones" metric="sesiones" onShowHelp={onShowHelp} />
-             <p className="text-4xl font-black tabular-nums mt-1 tracking-tighter">{stats.sessionsCount}/sem</p>
-          </button>
-        </div>
-      );
-    case 'volume_chart':
-      return (
-        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 shadow-xl border border-black/5 animate-in fade-in relative min-h-0">
-          <div className="flex justify-between items-start mb-10">
-            <div><MetricLabelHelp label="Volumen Semanal" metric="volumen" onShowHelp={onShowHelp} /><h4 className="text-5xl font-black tracking-tighter tabular-nums leading-none mt-1">{stats.totalVolume.toLocaleString()} <span className="text-lg text-slate-300 font-black ml-1">kg</span></h4></div>
-            <button onClick={onShowVolumeDetail} className="size-14 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xl hover:rotate-12 transition-all"><span className="material-symbols-outlined text-2xl font-black">query_stats</span></button>
-          </div>
-          <div className="h-56 w-full cursor-pointer" onClick={onShowVolumeDetail}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <Bar dataKey="volume" radius={[14, 14, 14, 14]} barSize={40}>
-                  {chartData.map((entry: any, idx: number) => <Cell key={`c-${idx}`} fill={entry.isReal ? '#FFEF0A' : '#f1f5f9'} />)}
-                </Bar>
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: '900', fill: '#94a3b8'}} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-    case 'fatigue_risk':
-      return (
-        <button onClick={onShowFatigueDetail} className="w-full bg-white dark:bg-surface-dark rounded-[4rem] p-10 border border-black/5 flex items-center justify-between animate-in fade-in shadow-xl text-left active:scale-95 transition-all">
-          <div className="flex items-center gap-8">
-            <div className="size-20 rounded-[2.2rem] bg-green-500/10 flex items-center justify-center text-green-500 shadow-inner"><span className="material-symbols-outlined text-4xl font-black animate-pulse">ecg_heart</span></div>
-            <div><h4 className="font-black text-2xl tracking-tighter leading-none">Zona Óptima</h4><p className="text-xs text-slate-400 font-black uppercase tracking-widest mt-2">Centro de Recuperación</p></div>
-          </div>
-          <span className="material-symbols-outlined text-slate-200 text-4xl font-black">chevron_right</span>
-        </button>
-      );
-    case 'muscle_dist':
-      return (
-        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 border border-black/5 animate-in fade-in shadow-xl min-h-0 relative group">
-          <div className="flex items-center justify-between mb-8">
-            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em]">Foco Muscular</h4>
-            <button 
-              onClick={() => setIsMuscleExpanded(!isMuscleExpanded)}
-              className="size-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center active:scale-90 transition-all border border-black/5"
-            >
-              <span className="material-symbols-outlined text-slate-400 text-xl font-black">{isMuscleExpanded ? 'close_fullscreen' : 'open_in_full'}</span>
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-10 mb-8">
-            <div className="size-40 shrink-0">
-              <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stats.muscleDist.length > 0 ? stats.muscleDist : [{value: 1}]} innerRadius={40} outerRadius={65} paddingAngle={8} dataKey="value" stroke="none">{stats.muscleDist.map((_: any, i: number) => <Cell key={i} fill={['#FFEF0A', '#E6D709', '#CCBF08', '#B3A707', '#998F06'][i % 5]} />)}{stats.muscleDist.length === 0 && <Cell fill="#f1f5f9" />}</Pie></PieChart></ResponsiveContainer>
-            </div>
-            <div className="flex-1 space-y-5 min-w-0">
-              {stats.muscleDist.slice(0, isMuscleExpanded ? 8 : 3).map((item: any) => (
-                <div key={item.name} className="flex flex-col gap-1.5 group/item">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                    <div className="flex items-center gap-1.5 truncate">
-                       <span className="text-slate-400 truncate">{item.name}</span>
-                       <span className={`material-symbols-outlined text-[12px] font-black ${item.trend === 'up' ? 'text-green-500' : item.trend === 'down' ? 'text-red-400' : 'text-slate-300'}`}>
-                         {item.trend === 'up' ? 'trending_up' : item.trend === 'down' ? 'trending_down' : 'remove'}
-                       </span>
-                    </div>
-                    <span className="text-slate-950 dark:text-white font-black">{item.percent}%</span>
-                  </div>
-                  <div className="h-2.5 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden shadow-inner">
-                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${item.percent}%` }}></div>
-                  </div>
-                  {stats.neglectedMuscle === item.name && (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <span className="size-1.5 rounded-full bg-orange-500 animate-ping"></span>
-                      <span className="text-[7px] font-black text-orange-500 uppercase tracking-[0.15em]">Sugerencia: Priorizar</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="p-5 rounded-[2rem] bg-slate-50 dark:bg-background-dark/50 border border-black/5 flex items-center gap-4">
-             <div className="size-12 rounded-xl bg-primary/20 text-primary-text flex items-center justify-center shrink-0"><span className="material-symbols-outlined font-black">psychology</span></div>
-             <p className="text-[10px] font-bold text-slate-500 leading-tight">
-                {muscleSuggestion}
-             </p>
-          </div>
-        </div>
-      );
-    case 'recent_prs':
-      return (
-        <div className="bg-white dark:bg-surface-dark rounded-[4.5rem] p-10 border border-black/5 animate-in fade-in shadow-xl min-h-0">
-          <div className="flex items-center justify-between mb-8">
-            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Últimos Hitos</h4>
-            <span className="material-symbols-outlined text-primary text-2xl fill-1">stars</span>
-          </div>
-          <div className="space-y-6">
-            {stats.recentPrs.length > 0 ? stats.recentPrs.map((pr: any, i: number) => (
-              <div key={i} className="flex items-center gap-6 animate-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${i * 150}ms` }}>
-                <div className="size-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-inner">
-                  <span className="material-symbols-outlined text-2xl font-black">bolt</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-black text-lg truncate tracking-tight text-slate-900 dark:text-white leading-none">{pr.name}</p>
-                    <p className="text-[9px] font-black text-primary bg-black dark:bg-white/10 px-2 py-0.5 rounded-md uppercase shrink-0 ml-2">{pr.date}</p>
-                  </div>
-                  <p className="text-sm font-bold text-slate-400 mt-1.5 uppercase tracking-[0.15em]">{pr.weight} {userProfile?.weightUnit || 'kg'}</p>
-                </div>
-              </div>
-            )) : (
-              <div className="text-center py-6">
-                <span className="material-symbols-outlined text-slate-200 dark:text-white/5 text-5xl mb-3 block">military_tech</span>
-                <p className="text-sm text-slate-400 font-bold italic tracking-wide px-4">¡Sigue entrenando para ver tus récords aquí!</p>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    default: return null;
-  }
 };
 
 export default Dashboard;

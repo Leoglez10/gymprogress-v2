@@ -7,9 +7,10 @@ interface StartWorkoutProps {
   onSessionStart: (routine: CustomRoutine) => void;
   onCreateCustom: (routineId?: string) => void;
   onStartFree: () => void;
+  onManualLog: () => void;
 }
 
-const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onCreateCustom, onStartFree }) => {
+const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onCreateCustom, onStartFree, onManualLog }) => {
   const [customRoutines, setCustomRoutines] = useState<CustomRoutine[]>([]);
   const [routineToDelete, setRoutineToDelete] = useState<string | null>(null);
 
@@ -27,7 +28,6 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
 
   return (
     <div className="min-h-full bg-background-light dark:bg-background-dark pb-40 animate-in fade-in duration-500">
-      {/* Header ajustado */}
       <header className="flex items-center px-4 py-3 sticky top-0 z-50 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md border-b border-black/5 dark:border-white/5 pt-[calc(max(1rem,env(safe-area-inset-top))+0.75rem)]">
         <button onClick={onBack} className="flex size-11 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
@@ -59,21 +59,35 @@ const StartWorkout: React.FC<StartWorkoutProps> = ({ onBack, onSessionStart, onC
           </div>
         </section>
 
-        {/* CREAR NUEVO - Ahora a ancho completo */}
-        <button 
-          onClick={() => onCreateCustom()}
-          className="w-full flex items-center gap-6 bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"
-        >
-          <div className="absolute -right-2 -top-2 size-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/20 transition-all"></div>
-          <div className="size-16 rounded-2xl bg-indigo-100 dark:bg-indigo-950/30 text-indigo-500 flex items-center justify-center group-hover:-rotate-6 transition-transform shadow-inner shrink-0">
-            <span className="material-symbols-outlined text-4xl fill-1">playlist_add</span>
-          </div>
-          <div className="flex-1">
-            <h4 className="font-black text-xl leading-tight tracking-tight">Nueva Rutina</h4>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 leading-tight">Diseña tu plan a medida desde cero</p>
-          </div>
-          <span className="material-symbols-outlined text-slate-200 group-hover:text-primary transition-colors">chevron_right</span>
-        </button>
+        <div className="grid grid-cols-2 gap-4">
+          {/* REGISTRO MANUAL */}
+          <button 
+            onClick={onManualLog}
+            className="flex flex-col gap-4 bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"
+          >
+            <div className="size-14 rounded-2xl bg-amber-100 dark:bg-amber-900/30 text-amber-500 flex items-center justify-center group-hover:rotate-6 transition-transform shadow-inner shrink-0">
+              <span className="material-symbols-outlined text-3xl fill-1">edit_calendar</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-black text-lg leading-tight tracking-tight">Registro Manual</h4>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 leading-tight">Añade entrenos pasados</p>
+            </div>
+          </button>
+
+          {/* CREAR NUEVO */}
+          <button 
+            onClick={() => onCreateCustom()}
+            className="flex flex-col gap-4 bg-white dark:bg-surface-dark rounded-[2.5rem] p-6 border border-black/5 shadow-sm text-left active:scale-95 transition-all group overflow-hidden relative"
+          >
+            <div className="size-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/30 text-indigo-500 flex items-center justify-center group-hover:-rotate-6 transition-transform shadow-inner shrink-0">
+              <span className="material-symbols-outlined text-3xl fill-1">playlist_add</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-black text-lg leading-tight tracking-tight">Nueva Rutina</h4>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 leading-tight">Diseña tu plan desde cero</p>
+            </div>
+          </button>
+        </div>
 
         {/* LISTA DE MIS RUTINAS */}
         <section className="pt-6">

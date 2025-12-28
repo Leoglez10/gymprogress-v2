@@ -63,11 +63,10 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
       if (sessionDate >= chronicLimit) chronicVolume += vol;
     });
 
-    const dailyAcuteAverage = acuteVolume / acuteDays;
-    const dailyChronicAverage = chronicVolume / chronicDays;
-    const acwr = dailyChronicAverage > 0 
-      ? parseFloat((dailyAcuteAverage / dailyChronicAverage).toFixed(2)) 
-      : 0;
+    // Sincronización de fórmula con Dashboard: Acute / (Chronic / 4)
+    const acwr = (chronicVolume / 4) > 0 
+      ? parseFloat((acuteVolume / (chronicVolume / 4)).toFixed(2)) 
+      : 1.0;
 
     return { acwr, acuteVolume, chronicVolume };
   }, [history]);
@@ -98,12 +97,13 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
 
   const statusInfo = useMemo(() => {
     const val = workloadStats.acwr;
-    if (val === 0) return { label: 'Sin Datos', color: 'text-slate-400', bg: 'bg-slate-500/10', desc: 'Entrena unos días para ver tu riesgo.' };
+    // Si no hay historial, tratamos el 1.0 como óptimo inicial
+    if (history.length === 0) return { label: 'Sin Datos', color: 'text-slate-400', bg: 'bg-slate-500/10', desc: 'Entrena unos días para ver tu riesgo.' };
     if (val > 1.5) return { label: 'Peligro', color: 'text-rose-500', bg: 'bg-rose-500/10', desc: 'Carga excesiva. El riesgo de lesión es muy alto hoy.' };
     if (val > 1.3) return { label: 'Sobrecarga', color: 'text-amber-500', bg: 'bg-amber-500/10', desc: 'Estás al límite. Considera una sesión ligera de técnica.' };
     if (val < 0.8) return { label: 'Infraentreno', color: 'text-sky-400', bg: 'bg-sky-400/10', desc: 'Tu cuerpo ha recuperado demasiado. ¡Hora de apretar!' };
     return { label: 'Óptimo', color: 'text-emerald-500', bg: 'bg-emerald-500/10', desc: 'Estás en el "Sweet Spot". Máximo rendimiento garantizado.' };
-  }, [workloadStats.acwr]);
+  }, [workloadStats.acwr, history.length]);
 
   return (
     <div className="flex flex-col min-h-full bg-background-light dark:bg-background-dark animate-in fade-in duration-500">
@@ -138,7 +138,7 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
             <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1">Carga de Trabajo (ACWR)</p>
             <div className="flex items-baseline gap-2">
                <h1 className="text-6xl font-black tracking-tighter tabular-nums leading-none">
-                 {workloadStats.acwr || '0.0'}
+                 {workloadStats.acwr.toFixed(2)}
                </h1>
                <span className={`text-sm font-black uppercase tracking-widest ${statusInfo.color}`}>{statusInfo.label}</span>
             </div>
@@ -259,7 +259,7 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
             ) : (
               <div className="text-center py-6 mb-6">
                  <span className="material-symbols-outlined text-5xl text-white/10 mb-4 block">analytics</span>
-                 <p className="text-slate-500 text-sm font-medium leading-relaxed">Analizaré tu ACWR real ({workloadStats.acwr}) para optimizar tu sesión de hoy.</p>
+                 <p className="text-slate-500 text-sm font-medium leading-relaxed">Analizaré tu ACWR real ({workloadStats.acwr.toFixed(2)}) para optimizar tu sesión de hoy.</p>
               </div>
             )}
 
@@ -283,7 +283,6 @@ const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ onBack, userProfile }) => {
           </div>
         </section>
 
-        {/* ESPACIADOR FINAL PARA EVITAR CORTE VISUAL CON LA NAV BAR */}
         <div className="h-32 w-full"></div>
       </main>
 

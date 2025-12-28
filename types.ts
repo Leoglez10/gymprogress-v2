@@ -15,7 +15,8 @@ export enum Screen {
   STATS = 'STATS',
   RISK_ANALYSIS = 'RISK_ANALYSIS',
   SUMMARY = 'SUMMARY',
-  PROFILE = 'PROFILE'
+  PROFILE = 'PROFILE',
+  MANUAL_LOG = 'MANUAL_LOG'
 }
 
 export type GoalType = 'sessions' | 'prs' | 'volume';
@@ -25,6 +26,12 @@ export interface GoalSettings {
   targetVolumePerWeek: number;
   targetPRsPerMonth: number;
   activeGoals: GoalType[];
+}
+
+export interface NotificationSettings {
+  workoutReminders: boolean;
+  weeklySummaries: boolean;
+  aiTips: boolean;
 }
 
 export interface UserProfile {
@@ -37,6 +44,7 @@ export interface UserProfile {
   avatarUrl?: string;
   weightUnit: 'kg' | 'lb';
   goalSettings: GoalSettings;
+  notificationSettings: NotificationSettings;
 }
 
 export interface WellnessEntry {
@@ -51,6 +59,8 @@ export interface Set {
   weight: number;
   reps: number;
   completed?: boolean;
+  // Added duration property to allow tracking time taken per set in components like ActiveSession.tsx
+  duration?: number;
 }
 
 export interface CustomExerciseEntry {

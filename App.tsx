@@ -18,6 +18,7 @@ import RiskAnalysis from './components/RiskAnalysis';
 import Summary from './components/Summary';
 import Profile from './components/Profile';
 import Navigation from './components/Navigation';
+import ManualLog from './components/ManualLog';
 
 const App: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.ONBOARDING);
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   const [editingRoutineId, setEditingRoutineId] = useState<string | undefined>(undefined);
   const [activeRoutine, setActiveRoutine] = useState<CustomRoutine | null>(null);
   const [isFooterVisible, setIsFooterVisible] = useState(true);
+  const [selectedDateForLog, setSelectedDateForLog] = useState<Date | undefined>(undefined);
   
   // Accesibilidad Global
   const [highContrast, setHighContrast] = useState(localStorage.getItem('gym_acc_contrast') === 'true');
@@ -48,6 +50,11 @@ const App: React.FC = () => {
       targetVolumePerWeek: 15000,
       targetPRsPerMonth: 5,
       activeGoals: ['sessions', 'prs', 'volume']
+    },
+    notificationSettings: {
+      workoutReminders: true,
+      weeklySummaries: true,
+      aiTips: true
     }
   };
 
@@ -59,6 +66,7 @@ const App: React.FC = () => {
     const activeSessionState = localStorage.getItem('gymProgress_active_session_state');
     
     if (setupComplete === 'true') {
+      // Prioridad 1: Sesión interrumpida
       if (activeSessionState) {
         try {
           const parsed = JSON.parse(activeSessionState);
@@ -76,6 +84,7 @@ const App: React.FC = () => {
         if (!parsed.goalSettings.targetPRsPerMonth) parsed.goalSettings.targetPRsPerMonth = 5;
         if (!parsed.weightUnit) parsed.weightUnit = 'kg';
         if (!parsed.avatarUrl) parsed.avatarUrl = DEFAULT_PROFILE.avatarUrl;
+        if (!parsed.notificationSettings) parsed.notificationSettings = DEFAULT_PROFILE.notificationSettings;
         setUserProfile(parsed);
       }
     }
@@ -84,11 +93,7 @@ const App: React.FC = () => {
   // Aplicar clases de Accesibilidad y Dark Mode
   useEffect(() => {
     const root = document.documentElement;
-    
-    // Dark Mode
     if (isDarkMode) root.classList.add('dark'); else root.classList.remove('dark');
-    
-    // Accesibilidad
     if (highContrast) root.classList.add('high-contrast'); else root.classList.remove('high-contrast');
     if (reducedMotion) root.classList.add('reduced-motion'); else root.classList.remove('reduced-motion');
     if (highlightedButtons) root.classList.add('highlighted-buttons'); else root.classList.remove('highlighted-buttons');
@@ -112,23 +117,23 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    const keysToRemove = [
-      'gymProgress_setup_complete', 'gymProgress_user_profile', 'gymProgress_workout_history',
-      'gymProgress_custom_routines', 'gymProgress_active_session_state', 'gymProgress_exercises',
-      'gymProgress_last_session_volume', 'gymProgress_last_session_duration', 'gymProgress_last_session_data',
-      'gymProgress_dashboard_widgets_v3', 'gym_acc_contrast', 'gym_acc_motion', 'gym_acc_highlight'
-    ];
-    keysToRemove.forEach(key => localStorage.removeItem(key));
+    localStorage.clear();
     setUserProfile(DEFAULT_PROFILE);
     setActiveRoutine(null);
-    setCurrentScreen(Screen.ONBOARDING);
     setHighContrast(false);
     setReducedMotion(false);
     setHighlightedButtons(false);
+    setIsDarkMode(false);
+    setEditingRoutineId(undefined);
+    setSelectedDateForLog(undefined);
+    setCurrentScreen(Screen.LOGIN);
+    window.scrollTo(0, 0);
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
   };
 
   const navigateTo = (screen: Screen) => {
     if (screen !== Screen.CREATE_WORKOUT) setEditingRoutineId(undefined);
+    if (screen !== Screen.MANUAL_LOG) setSelectedDateForLog(undefined);
     setCurrentScreen(screen);
     setIsFooterVisible(true);
     if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
@@ -137,6 +142,11 @@ const App: React.FC = () => {
   const updateUserProfile = (newProfile: UserProfile) => {
     setUserProfile(newProfile);
     localStorage.setItem('gymProgress_user_profile', JSON.stringify(newProfile));
+  };
+
+  const handleGoToManualLog = (date?: Date) => {
+    setSelectedDateForLog(date);
+    navigateTo(Screen.MANUAL_LOG);
   };
 
   const showNav = [Screen.DASHBOARD, Screen.EXERCISE_LIBRARY, Screen.STATS, Screen.RISK_ANALYSIS, Screen.PROFILE].includes(currentScreen);
@@ -164,13 +174,14 @@ const App: React.FC = () => {
             isFooterVisible={isFooterVisible} 
           />
         )}
-        {currentScreen === Screen.START_WORKOUT && <StartWorkout onBack={() => navigateTo(Screen.DASHBOARD)} onSessionStart={(r) => { setActiveRoutine(r); navigateTo(Screen.ACTIVE_SESSION); }} onCreateCustom={(id) => { setEditingRoutineId(id); navigateTo(Screen.CREATE_WORKOUT); }} onStartFree={() => { setActiveRoutine({id: `free_${Date.now()}`, name: 'Sesión Libre', exercises: []}); navigateTo(Screen.ACTIVE_SESSION); }} />}
+        {currentScreen === Screen.START_WORKOUT && <StartWorkout onBack={() => navigateTo(Screen.DASHBOARD)} onSessionStart={(r) => { setActiveRoutine(r); navigateTo(Screen.ACTIVE_SESSION); }} onCreateCustom={(id) => { setEditingRoutineId(id); navigateTo(Screen.CREATE_WORKOUT); }} onStartFree={() => { setActiveRoutine({id: `free_${Date.now()}`, name: 'Sesión Libre', exercises: []}); navigateTo(Screen.ACTIVE_SESSION); }} onManualLog={() => navigateTo(Screen.MANUAL_LOG)} />}
         {currentScreen === Screen.CREATE_WORKOUT && <CreateWorkout onBack={() => navigateTo(Screen.START_WORKOUT)} onSave={() => navigateTo(Screen.START_WORKOUT)} initialRoutineId={editingRoutineId} userProfile={userProfile} />}
         {currentScreen === Screen.ACTIVE_SESSION && <ActiveSession routine={activeRoutine} onFinish={() => navigateTo(Screen.SUMMARY)} onCancel={() => navigateTo(Screen.START_WORKOUT)} userProfile={userProfile} />}
         {currentScreen === Screen.EXERCISE_LIBRARY && <ExerciseLibrary onBack={() => navigateTo(Screen.DASHBOARD)} isFooterVisible={isFooterVisible} onToggleFooter={setIsFooterVisible} />}
-        {currentScreen === Screen.STATS && <Stats onBack={() => navigateTo(Screen.DASHBOARD)} userProfile={userProfile} />}
+        {currentScreen === Screen.STATS && <Stats onBack={() => navigateTo(Screen.DASHBOARD)} userProfile={userProfile} onAddWorkout={handleGoToManualLog} />}
         {currentScreen === Screen.RISK_ANALYSIS && <RiskAnalysis onBack={() => navigateTo(Screen.DASHBOARD)} userProfile={userProfile} />}
         {currentScreen === Screen.SUMMARY && <Summary onDone={() => navigateTo(Screen.DASHBOARD)} userProfile={userProfile} />}
+        {currentScreen === Screen.MANUAL_LOG && <ManualLog onBack={() => navigateTo(Screen.START_WORKOUT)} onSave={() => navigateTo(Screen.DASHBOARD)} initialDate={selectedDateForLog} userProfile={userProfile} />}
         {currentScreen === Screen.PROFILE && (
           <Profile 
             onBack={() => navigateTo(Screen.DASHBOARD)} 

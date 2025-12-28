@@ -23,21 +23,27 @@ const Summary: React.FC<SummaryProps> = ({ onDone, userProfile }) => {
     const saved = localStorage.getItem('gymProgress_workout_history');
     const history = saved ? JSON.parse(saved) : [];
     
-    // Normalizar datos de ejercicios antes de guardar
     const normalizedExercises = (sessionData?.exercises || []).map((ex: any) => ({
       ...ex,
-      exerciseId: String(ex.exerciseId), // Asegurar ID string para vinculación
+      exerciseId: String(ex.exerciseId),
       sets: (ex.sets || []).map((s: any) => ({
         ...s,
-        completed: !!s.completed, // Booleano explícito
+        completed: !!s.completed,
         weight: Number(s.weight) || 0,
         reps: Number(s.reps) || 0
       }))
     }));
 
+    // Forzamos el guardado a las 12:00 local para consistencia con el calendario
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const localNoonISO = new Date(`${year}-${month}-${day}T12:00:00`).toISOString();
+
     const newRecord = {
       id: String(Date.now()),
-      date: new Date().toISOString(),
+      date: localNoonISO,
       volume: vol,
       duration: `${Math.floor(dur / 60)}m`,
       unit: userProfile.weightUnit,

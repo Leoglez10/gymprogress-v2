@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { UserProfile, CustomRoutine, Exercise } from '../types';
+import React, { useState, useRef } from 'react';
+import { UserProfile, NotificationSettings } from '../types';
 import { NumberInput } from './BodyData';
 import { getTargetVolumeRecommendation } from '../services/geminiService';
 
@@ -28,7 +28,9 @@ const PRESET_AVATARS = [
   "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=400&auto=format&fit=crop",
   "https://images.unsplash.com/photo-1594381898411-846e7d193883?q=80&w=400&auto=format&fit=crop",
   "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?q=80&w=400&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=400&auto=format&fit=crop"
+  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=400&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1574680077505-7250077dad92?q=80&w=400&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1518310383802-640c2de311b2?q=80&w=400&auto=format&fit=crop"
 ];
 
 const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, userProfile, onUpdateProfile, onLogout, accSettings }) => {
@@ -38,6 +40,9 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [showWeightSuggestion, setShowWeightSuggestion] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -101,6 +106,23 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
     setShowAvatarPicker(false);
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      onUpdateProfile({ ...userProfile, avatarUrl: base64String });
+      setEditForm({ ...editForm, avatarUrl: base64String });
+      setIsUploading(false);
+      setShowAvatarPicker(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleApplyUnitChange = (newUnit: 'kg' | 'lb') => {
     if (newUnit === userProfile.weightUnit) {
       setShowUnitModal(false);
@@ -121,6 +143,17 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
     setShowUnitModal(false);
   };
 
+  const handleToggleNotification = (key: keyof NotificationSettings) => {
+    const nextSettings = {
+      ...userProfile.notificationSettings,
+      [key]: !userProfile.notificationSettings[key]
+    };
+    onUpdateProfile({
+      ...userProfile,
+      notificationSettings: nextSettings
+    });
+  };
+
   const headerStyle = "sticky top-0 z-[60] bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-xl border-b border-black/5 dark:border-white/5 pt-[calc(max(1rem,env(safe-area-inset-top))+0.75rem)] pb-4 px-6 transition-all";
   const currentAvatar = userProfile.avatarUrl || PRESET_AVATARS[0];
 
@@ -129,12 +162,12 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
       <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark pb-32 animate-in fade-in duration-300">
         <header className={headerStyle}>
           <div className="flex items-center justify-between">
-            <button onClick={() => setIsEditing(false)} className="text-slate-400 font-black text-[10px] uppercase tracking-widest px-4 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 active:scale-95 transition-all">Cancelar</button>
+            <button onClick={() => setIsEditing(false)} className="cursor-pointer text-slate-400 font-black text-[10px] uppercase tracking-widest px-4 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-black/5 active:scale-95 transition-all">Cancelar</button>
             <h2 className="text-xl font-black tracking-tighter">Ajustes</h2>
             <button 
               onClick={handleSaveAttempt} 
               disabled={!isFormValid}
-              className="text-black font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-xl bg-primary shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale"
+              className="cursor-pointer text-black font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-xl bg-primary shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale"
             >
               Guardar
             </button>
@@ -181,7 +214,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                     <button 
                       onClick={handleAskAI}
                       disabled={aiLoading}
-                      className="w-full h-24 bg-black dark:bg-white text-white dark:text-black rounded-[2.5rem] flex items-center justify-center gap-4 active:scale-95 transition-all shadow-xl relative overflow-hidden"
+                      className="cursor-pointer w-full h-24 bg-black dark:bg-white text-white dark:text-black rounded-[2.5rem] flex items-center justify-center gap-4 active:scale-95 transition-all shadow-xl relative overflow-hidden"
                     >
                       {aiLoading && <div className="absolute inset-0 bg-primary/20 animate-pulse"></div>}
                       <span className="material-symbols-outlined text-3xl font-black">psychology</span>
@@ -208,7 +241,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                       </div>
                       <button 
                         onClick={() => handleFinalSave(recommendedVolume || undefined)}
-                        className="w-full h-20 bg-primary text-black rounded-full font-black text-lg uppercase tracking-widest active:scale-95 transition-all shadow-xl"
+                        className="cursor-pointer w-full h-20 bg-primary text-black rounded-full font-black text-lg uppercase tracking-widest active:scale-95 transition-all shadow-xl"
                       >
                         APLICAR NUEVA META
                       </button>
@@ -217,7 +250,7 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
 
                   <button 
                     onClick={() => handleFinalSave()}
-                    className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] active:scale-95 transition-all"
+                    className="cursor-pointer w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-[0.3em] active:scale-95 transition-all"
                   >
                     Mantener metas actuales
                   </button>
@@ -234,14 +267,14 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
     <div className={`flex flex-col min-h-screen bg-background-light dark:bg-background-dark pb-32 animate-in fade-in duration-500`}>
       <header className={headerStyle}>
         <div className="flex items-center justify-between">
-          <button onClick={onBack} className="flex size-11 items-center justify-center rounded-2xl bg-white dark:bg-white/5 text-slate-500 active:scale-90 transition-all border border-black/5 shadow-sm">
+          <button onClick={onBack} className="cursor-pointer flex size-11 items-center justify-center rounded-2xl bg-white dark:bg-white/5 text-slate-500 active:scale-90 transition-all border border-black/5 shadow-sm">
             <span className="material-symbols-outlined text-2xl font-black">arrow_back</span>
           </button>
           <div className="text-center">
             <h2 className="text-xl font-black tracking-tighter leading-none">Mi Perfil</h2>
             <p className="text-[9px] font-black uppercase text-slate-400 tracking-[0.25em] mt-1">Status de Atleta</p>
           </div>
-          <button onClick={() => setIsEditing(true)} className="flex size-11 items-center justify-center rounded-2xl bg-white dark:bg-white/5 text-slate-500 active:scale-90 transition-all border border-black/5 shadow-sm">
+          <button onClick={() => setIsEditing(true)} className="cursor-pointer flex size-11 items-center justify-center rounded-2xl bg-white dark:bg-white/5 text-slate-500 active:scale-90 transition-all border border-black/5 shadow-sm">
             <span className="material-symbols-outlined text-2xl font-black">tune</span>
           </button>
         </div>
@@ -250,15 +283,15 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
       <div className="flex flex-col items-center p-10 bg-gradient-to-b from-white dark:from-surface-dark to-transparent border-b border-black/5">
         <div className="relative mb-6">
           <button 
-            onClick={() => setShowFullImage(true)}
-            className="size-44 rounded-full animate-profile-ring p-1.5 shadow-[0_25px_60px_rgba(96,165,250,0.25)] bg-background-light dark:bg-background-dark active:scale-95 transition-all overflow-hidden"
+            onClick={() => setShowAvatarPicker(true)}
+            className="cursor-pointer size-44 rounded-full animate-profile-ring p-1.5 shadow-[0_25px_60px_rgba(96,165,250,0.25)] bg-background-light dark:bg-background-dark active:scale-95 transition-all overflow-hidden"
           >
             <div className="w-full h-full rounded-full border-[6px] border-white dark:border-surface-dark bg-cover bg-center shadow-inner relative overflow-hidden" style={{ backgroundImage: `url("${currentAvatar}")` }}>
             </div>
           </button>
           <button 
             onClick={() => setShowAvatarPicker(true)}
-            className="absolute bottom-1 right-1 size-12 bg-black dark:bg-white rounded-2xl border-4 border-background-light dark:border-background-dark flex items-center justify-center shadow-xl active:scale-90 transition-all group"
+            className="cursor-pointer absolute bottom-1 right-1 size-12 bg-black dark:bg-white rounded-2xl border-4 border-background-light dark:border-background-dark flex items-center justify-center shadow-xl active:scale-90 transition-all group"
           >
              <span className="material-symbols-outlined text-primary dark:text-black font-black text-2xl group-hover:rotate-12 transition-transform">photo_camera</span>
           </button>
@@ -279,6 +312,39 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
             <DataRow label="Edad" value={`${userProfile.age} años`} />
             <DataRow label="Peso" value={`${userProfile.weight} ${userProfile.weightUnit}`} />
             <DataRow label="Altura" value={`${userProfile.height} cm`} />
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-5 px-3">
+            <h3 className="text-xl font-black tracking-tight">Notificaciones</h3>
+            <span className="material-symbols-outlined text-slate-300">notifications</span>
+          </div>
+          <div className="bg-white dark:bg-surface-dark rounded-[2.5rem] overflow-hidden shadow-sm border border-black/5">
+            <PreferenceItem 
+              label="Recordatorios Diarios" 
+              icon="notifications_active" 
+              toggle 
+              value={userProfile.notificationSettings.workoutReminders} 
+              onToggle={() => handleToggleNotification('workoutReminders')} 
+              subtitle="No olvides tu sesión de hoy"
+            />
+            <PreferenceItem 
+              label="Resúmenes Semanales" 
+              icon="analytics" 
+              toggle 
+              value={userProfile.notificationSettings.weeklySummaries} 
+              onToggle={() => handleToggleNotification('weeklySummaries')} 
+              subtitle="Progreso consolidado cada domingo"
+            />
+            <PreferenceItem 
+              label="Consejos de la IA" 
+              icon="psychology" 
+              toggle 
+              value={userProfile.notificationSettings.aiTips} 
+              onToggle={() => handleToggleNotification('aiTips')} 
+              subtitle="Sugerencias basadas en tu carga"
+            />
           </div>
         </section>
 
@@ -326,16 +392,20 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
           </div>
         </section>
 
-        <button onClick={() => setShowLogoutConfirm(true)} className="w-full h-24 rounded-[3rem] bg-rose-500/10 text-rose-500 font-black text-xs uppercase tracking-[0.25em] border-2 border-rose-500/10 active:scale-95 transition-all mb-12 shadow-sm flex items-center justify-center gap-4">
+        <button 
+          onClick={() => setShowLogoutConfirm(true)} 
+          className="cursor-pointer w-full h-24 rounded-[3rem] bg-rose-500/10 text-rose-500 font-black text-xs uppercase tracking-[0.25em] border-2 border-rose-500/10 active:scale-95 transition-all mb-12 shadow-sm flex items-center justify-center gap-4"
+          style={{ cursor: 'pointer' }}
+        >
           <span className="material-symbols-outlined font-black">logout</span>
-          Finalizar Sesión
+          Cerrar Sesión
         </button>
       </div>
 
       {showFullImage && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div onClick={() => setShowFullImage(false)} className="absolute inset-0 bg-black/95 backdrop-blur-3xl"></div>
-          <button onClick={() => setShowFullImage(false)} className="absolute top-[calc(env(safe-area-inset-top)+1rem)] right-6 size-12 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-90 transition-all z-[260]">
+          <div onClick={() => setShowFullImage(false)} className="absolute inset-0 bg-black/95 backdrop-blur-3xl cursor-pointer"></div>
+          <button onClick={() => setShowFullImage(false)} className="cursor-pointer absolute top-[calc(env(safe-area-inset-top)+1rem)] right-6 size-12 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-90 transition-all z-[260]">
             <span className="material-symbols-outlined font-black text-2xl">close</span>
           </button>
           <div className="relative z-[255] w-full max-w-sm flex flex-col items-center animate-in zoom-in-50 duration-500">
@@ -355,33 +425,80 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
 
       {showAvatarPicker && (
         <div className="fixed inset-0 z-[140] bg-black/80 backdrop-blur-xl flex items-end justify-center animate-in fade-in duration-300">
-          <div onClick={() => setShowAvatarPicker(false)} className="absolute inset-0 z-0"></div>
-          <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] shadow-2xl animate-in slide-in-from-bottom duration-500 relative z-10 flex flex-col max-h-[90vh]">
+          <div onClick={() => setShowAvatarPicker(false)} className="absolute inset-0 z-0 cursor-pointer"></div>
+          <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] shadow-2xl animate-in slide-in-from-bottom duration-500 relative z-10 flex flex-col max-h-[92vh]">
             <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-5 mb-2 opacity-40"></div>
+            
             <div className="p-8 pt-4 pb-4 flex items-center justify-between border-b border-black/5 dark:border-white/5">
-               <h3 className="text-3xl font-black tracking-tighter">Avatar Studio</h3>
-               <button onClick={() => setShowAvatarPicker(false)} className="size-12 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-400 active:scale-90 transition-all"><span className="material-symbols-outlined font-black">close</span></button>
+               <div>
+                 <h3 className="text-3xl font-black tracking-tighter">Avatar Studio</h3>
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Personaliza tu perfil</p>
+               </div>
+               <button onClick={() => setShowAvatarPicker(false)} className="cursor-pointer size-12 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-400 active:scale-90 transition-all"><span className="material-symbols-outlined font-black">close</span></button>
             </div>
+
             <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-10 pb-16">
+               <div className="space-y-5">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Tu Galería</p>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="cursor-pointer w-full group relative overflow-hidden bg-primary/5 border-2 border-dashed border-primary/40 rounded-[2.5rem] p-10 transition-all active:scale-[0.98] active:bg-primary/10"
+                  >
+                    <div className="flex flex-col items-center gap-4">
+                       <div className="size-16 rounded-full bg-primary text-black flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                          <span className="material-symbols-outlined text-3xl font-black">
+                            {isUploading ? 'sync' : 'cloud_upload'}
+                          </span>
+                       </div>
+                       <div className="text-center">
+                          <p className="font-black text-lg uppercase tracking-tighter leading-none">Subir desde dispositivo</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Formatos: JPG, PNG • Max 5MB</p>
+                       </div>
+                    </div>
+                  </button>
+               </div>
+
                <div className="space-y-6">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Presets Pro</p>
-                  <div className="grid grid-cols-2 gap-5">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Presets de Atleta</p>
+                  <div className="grid grid-cols-3 gap-4">
                      {PRESET_AVATARS.map((url, i) => (
-                       <button key={i} onClick={() => handleAvatarSelect(url)} className={`aspect-square rounded-[2.5rem] bg-cover bg-center border-[6px] transition-all active:scale-90 relative overflow-hidden group ${userProfile.avatarUrl === url ? 'border-primary shadow-xl scale-105' : 'border-transparent grayscale-[0.3] opacity-70'}`} style={{ backgroundImage: `url("${url}")` }}>
-                         {userProfile.avatarUrl === url && (<div className="absolute top-3 right-3 size-6 bg-primary rounded-full flex items-center justify-center shadow-lg animate-in zoom-in"><span className="material-symbols-outlined text-[14px] font-black text-black">check</span></div>)}
+                       <button 
+                        key={i} 
+                        onClick={() => handleAvatarSelect(url)} 
+                        className={`cursor-pointer aspect-square rounded-3xl bg-cover bg-center border-[4px] transition-all active:scale-90 relative overflow-hidden group ${userProfile.avatarUrl === url ? 'border-primary shadow-xl scale-105' : 'border-transparent opacity-70 hover:opacity-100'}`} 
+                        style={{ backgroundImage: `url("${url}")` }}
+                       >
+                         {userProfile.avatarUrl === url && (
+                           <div className="absolute inset-0 bg-primary/20 flex items-center justify-center backdrop-blur-[2px]">
+                              <div className="size-8 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in">
+                                 <span className="material-symbols-outlined text-black font-black">check</span>
+                              </div>
+                           </div>
+                         )}
                        </button>
                      ))}
                   </div>
                </div>
             </div>
-            <div className="p-8 pt-0"><button onClick={() => setShowAvatarPicker(false)} className="w-full py-6 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.2em] shadow-2xl">CERRAR STUDIO</button></div>
+
+            <div className="p-8 pt-0 bg-white/80 dark:bg-surface-dark/80 backdrop-blur-md">
+              <button onClick={() => setShowAvatarPicker(false)} className="cursor-pointer w-full py-6 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.2em] shadow-2xl active:scale-95 transition-all">CERRAR STUDIO</button>
+            </div>
           </div>
         </div>
       )}
 
       {showUnitModal && (
         <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-2xl flex items-end animate-in fade-in duration-300 p-4 pb-0">
-          <div onClick={() => setShowUnitModal(false)} className="absolute inset-0"></div>
+          <div onClick={() => setShowUnitModal(false)} className="absolute inset-0 cursor-pointer"></div>
           <div className="w-full max-w-md mx-auto bg-white dark:bg-surface-dark rounded-t-[4rem] p-10 pb-16 shadow-2xl animate-in slide-in-from-bottom duration-500 relative flex flex-col items-center text-center">
             <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-10 opacity-40"></div>
             <h3 className="text-3xl font-black tracking-tighter mb-4">Cambio de Sistema</h3>
@@ -398,20 +515,48 @@ const Profile: React.FC<ProfileProps> = ({ onBack, isDarkMode, setIsDarkMode, us
                   </p>
                </div>
             </div>
-            <button onClick={() => handleApplyUnitChange(userProfile.weightUnit === 'kg' ? 'lb' : 'kg')} className="w-full py-7 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.25em] active:scale-95 transition-all shadow-2xl">APLICAR CAMBIOS</button>
+            <button onClick={() => handleApplyUnitChange(userProfile.weightUnit === 'kg' ? 'lb' : 'kg')} className="cursor-pointer w-full py-7 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm uppercase tracking-[0.25em] active:scale-95 transition-all shadow-2xl">APLICAR CAMBIOS</button>
           </div>
         </div>
       )}
 
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
-          <div onClick={() => setShowLogoutConfirm(false)} className="absolute inset-0"></div>
-          <div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3.5rem] p-10 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95">
-            <div className="size-20 rounded-[2rem] bg-rose-500/10 flex items-center justify-center text-rose-500"><span className="material-symbols-outlined text-4xl font-black">logout</span></div>
-            <h3 className="text-2xl font-black tracking-tighter">¿Cerrar Sesión?</h3>
-            <div className="flex flex-col w-full gap-3">
-              <button onClick={() => { setShowLogoutConfirm(false); onLogout(); }} className="w-full py-5 rounded-full bg-rose-500 text-white font-black text-xs uppercase tracking-[0.2em] active:scale-95 transition-all">CONFIRMAR SALIDA</button>
-              <button onClick={() => setShowLogoutConfirm(false)} className="w-full py-5 rounded-full bg-slate-100 dark:bg-background-dark text-slate-400 font-black text-xs uppercase tracking-widest">CANCELAR</button>
+        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div onClick={() => setShowLogoutConfirm(false)} className="absolute inset-0 cursor-pointer z-0"></div>
+          
+          <div className="relative z-10 w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3.5rem] p-10 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95 overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500/20"></div>
+            
+            <div className="size-24 rounded-[2.5rem] bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-inner">
+              <span className="material-symbols-outlined text-5xl font-black">logout</span>
+            </div>
+            
+            <div className="space-y-3">
+              <h3 className="text-3xl font-black tracking-tighter leading-none">¿Cerrar Sesión?</h3>
+              <p className="text-slate-400 font-bold text-sm leading-tight">Serás redirigido a la pantalla de acceso.</p>
+            </div>
+            
+            <div className="flex flex-col w-full gap-4">
+              <button 
+                type="button"
+                onClick={() => { 
+                  setShowLogoutConfirm(false); 
+                  onLogout(); 
+                }} 
+                className="cursor-pointer w-full py-6 rounded-full bg-rose-500 hover:bg-rose-600 text-white font-black text-sm uppercase tracking-[0.2em] active:scale-95 transition-all shadow-[0_15px_30px_rgba(244,63,94,0.3)]"
+                style={{ cursor: 'pointer' }}
+              >
+                CONFIRMAR SALIDA
+              </button>
+              
+              <button 
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)} 
+                className="cursor-pointer w-full py-5 rounded-full bg-slate-100 dark:bg-background-dark text-slate-400 hover:text-slate-600 font-black text-xs uppercase tracking-widest active:scale-95 transition-all"
+                style={{ cursor: 'pointer' }}
+              >
+                CANCELAR
+              </button>
             </div>
           </div>
         </div>
@@ -434,7 +579,7 @@ const PreferenceItem: React.FC<{ label: string; icon: string; toggle?: boolean; 
       <div className="flex flex-col"><span className="text-sm font-black uppercase tracking-[0.1em]">{label}</span>{subtitle && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{subtitle}</span>}</div>
     </div>
     {toggle ? (
-      <button onClick={() => onToggle?.(!value)} className={`rounded-full transition-all duration-500 relative shadow-inner w-16 h-8 ${value ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700'}`}>
+      <button onClick={() => onToggle?.(!value)} className={`cursor-pointer rounded-full transition-all duration-500 relative shadow-inner w-16 h-8 ${value ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700'}`}>
         <div className={`absolute top-1 bg-white rounded-full shadow-md transition-all duration-300 size-6 ${value ? 'left-9' : 'left-1'}`}></div>
       </button>
     ) : (

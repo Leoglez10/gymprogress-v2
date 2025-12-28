@@ -14,6 +14,7 @@ interface PerformanceSet {
   weight: number;
   reps: number;
   completed: boolean;
+  duration?: number;
 }
 
 const CATEGORY_MUSCLE_MAP: Record<string, string[]> = {
@@ -29,11 +30,16 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   const [exerciseSets, setExerciseSets] = useState<PerformanceSet[]>([]);
   const [seconds, setSeconds] = useState(0);
   
+  // Configuración de descanso y ritmo
+  const [isPreStarting, setIsPreStarting] = useState(true);
   const [restDuration, setRestDuration] = useState(90);
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [autoRestEnabled, setAutoRestEnabled] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
+
+  // Estado del cronómetro de serie activa
+  const [activeSetIdx, setActiveSetIdx] = useState<number | null>(null);
 
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -44,11 +50,14 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
 
   const [translateY, setTranslateY] = useState(0);
   const touchStartRef = useRef<number | null>(null);
+  const isFinishing = useRef(false);
 
+  // CARGAR ESTADO INICIAL / RESTAURACIÓN
   useEffect(() => {
     const savedState = localStorage.getItem('gymProgress_active_session_state');
     const savedLibrary = localStorage.getItem('gymProgress_exercises');
     if (savedLibrary) setLibrary(JSON.parse(savedLibrary));
+    
     if (savedState) {
       try {
         const parsed = JSON.parse(savedState);
@@ -60,22 +69,60 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
         setIsResting(parsed.isResting);
         if (parsed.restDuration) setRestDuration(parsed.restDuration);
         if (parsed.autoRestEnabled !== undefined) setAutoRestEnabled(parsed.autoRestEnabled);
+        setIsPreStarting(false); 
       } catch (e) { console.error("Error al restaurar sesión activa", e); }
     } else if (routine) {
       if (routine.exercises.length > 0) {
-        setExerciseSets(routine.exercises[0].sets.map(s => ({ weight: s.weight, reps: s.reps, completed: s.completed || false })));
+        setExerciseSets(routine.exercises[0].sets.map(s => ({ 
+          weight: s.weight, 
+          reps: s.reps, 
+          completed: s.completed || false,
+          duration: s.duration || 0
+        })));
       }
     }
-    const timer = setInterval(() => setSeconds(s => s + 1), 1000);
-    return () => clearInterval(timer);
   }, []);
 
+  // GUARDADO AUTOMÁTICO DE ESTADO
   useEffect(() => {
-    if (sessionRoutine) {
-      const stateToSave = { routine: sessionRoutine, currentExerciseIdx, exerciseSets, seconds, restSeconds, isResting, restDuration, autoRestEnabled };
+    // Si no estamos finalizando, guardamos el estado actual en cada cambio relevante
+    if (sessionRoutine && !isPreStarting && !isFinishing.current) {
+      const stateToSave = { 
+        routine: sessionRoutine, 
+        currentExerciseIdx, 
+        exerciseSets, 
+        seconds, 
+        restSeconds, 
+        isResting, 
+        restDuration, 
+        autoRestEnabled 
+      };
       localStorage.setItem('gymProgress_active_session_state', JSON.stringify(stateToSave));
     }
-  }, [sessionRoutine, currentExerciseIdx, exerciseSets, seconds, restSeconds, isResting, restDuration, autoRestEnabled]);
+  }, [sessionRoutine, currentExerciseIdx, exerciseSets, seconds, restSeconds, isResting, restDuration, autoRestEnabled, isPreStarting]);
+
+  // Timers
+  useEffect(() => {
+    if (isPreStarting) return;
+    const timer = setInterval(() => setSeconds(s => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isPreStarting]);
+
+  useEffect(() => {
+    let interval: any;
+    if (activeSetIdx !== null) {
+      interval = setInterval(() => {
+        setExerciseSets(prev => {
+          const updated = [...prev];
+          if (updated[activeSetIdx]) {
+            updated[activeSetIdx].duration = (updated[activeSetIdx].duration || 0) + 1;
+          }
+          return updated;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [activeSetIdx]);
 
   useEffect(() => {
     let interval: any;
@@ -87,8 +134,17 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   const handleToggleSet = (idx: number) => {
     const updated = [...exerciseSets];
     updated[idx].completed = !updated[idx].completed;
+    if (updated[idx].completed && activeSetIdx === idx) setActiveSetIdx(null);
     setExerciseSets(updated);
-    if (updated[idx].completed && autoRestEnabled) { setRestSeconds(restDuration); setIsResting(true); }
+    if (updated[idx].completed && autoRestEnabled) { 
+      setRestSeconds(restDuration); 
+      setIsResting(true); 
+    }
+  };
+
+  const toggleSetTimer = (idx: number) => {
+    if (activeSetIdx === idx) setActiveSetIdx(null);
+    else setActiveSetIdx(idx);
   };
 
   const updateSetValue = (idx: number, field: 'weight' | 'reps', val: number) => {
@@ -102,7 +158,15 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
     if (!sessionRoutine) return null;
     const updatedExercises = [...sessionRoutine.exercises];
     if (updatedExercises[currentExerciseIdx]) {
-      updatedExercises[currentExerciseIdx] = { ...updatedExercises[currentExerciseIdx], sets: exerciseSets.map(s => ({ weight: s.weight, reps: s.reps, completed: s.completed })) };
+      updatedExercises[currentExerciseIdx] = { 
+        ...updatedExercises[currentExerciseIdx], 
+        sets: exerciseSets.map(s => ({ 
+          weight: s.weight, 
+          reps: s.reps, 
+          completed: s.completed,
+          duration: s.duration 
+        })) 
+      };
     }
     return { ...sessionRoutine, exercises: updatedExercises };
   };
@@ -110,33 +174,54 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   const nextExercise = () => {
     const updatedRoutine = getUpdatedRoutineWithCurrentProgress();
     if (!updatedRoutine) return;
+    setActiveSetIdx(null);
     if (currentExerciseIdx < updatedRoutine.exercises.length - 1) {
       const nextIdx = currentExerciseIdx + 1;
       const nextExData = updatedRoutine.exercises[nextIdx];
       setSessionRoutine(updatedRoutine);
       setCurrentExerciseIdx(nextIdx);
-      setExerciseSets(nextExData.sets.map(s => ({ weight: s.weight, reps: s.reps, completed: s.completed || false })));
+      setExerciseSets(nextExData.sets.map(s => ({ 
+        weight: s.weight, 
+        reps: s.reps, 
+        completed: s.completed || false,
+        duration: s.duration || 0
+      })));
     } else { finishWorkout(updatedRoutine); }
   };
 
   const prevExercise = () => {
     const updatedRoutine = getUpdatedRoutineWithCurrentProgress();
     if (!updatedRoutine || currentExerciseIdx === 0) return;
+    setActiveSetIdx(null);
     const prevIdx = currentExerciseIdx - 1;
     const prevExData = updatedRoutine.exercises[prevIdx];
     setSessionRoutine(updatedRoutine);
     setCurrentExerciseIdx(prevIdx);
-    setExerciseSets(prevExData.sets.map(s => ({ weight: s.weight, reps: s.reps, completed: s.completed || false })));
+    setExerciseSets(prevExData.sets.map(s => ({ 
+      weight: s.weight, 
+      reps: s.reps, 
+      completed: s.completed || false,
+      duration: s.duration || 0
+    })));
   };
 
   const finishWorkout = (finalRoutine: CustomRoutine) => {
+    isFinishing.current = true; // Bloquea useEffect de guardado
     let totalVolume = 0;
     finalRoutine.exercises.forEach(ex => { ex.sets.forEach(s => { if (s.completed) totalVolume += (s.weight * s.reps); }); });
     localStorage.setItem('gymProgress_last_session_volume', totalVolume.toString());
     localStorage.setItem('gymProgress_last_session_duration', seconds.toString());
     localStorage.setItem('gymProgress_last_session_data', JSON.stringify(finalRoutine));
+    
+    // Limpieza CRÍTICA del estado activo
     localStorage.removeItem('gymProgress_active_session_state');
     onFinish();
+  };
+
+  const handleCancelWorkout = () => {
+    isFinishing.current = true;
+    localStorage.removeItem('gymProgress_active_session_state');
+    if (onCancel) onCancel();
   };
 
   const addNewExerciseFromLibrary = (ex: Exercise) => {
@@ -147,7 +232,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
     setSessionRoutine(finalRoutine);
     const newIdx = finalRoutine.exercises.length - 1;
     setCurrentExerciseIdx(newIdx);
-    setExerciseSets([{ weight: 0, reps: 10, completed: false }]);
+    setExerciseSets([{ weight: 0, reps: 10, completed: false, duration: 0 }]);
     setShowExerciseSelector(false);
     setIsCreatingNew(false);
     setSearchTerm('');
@@ -170,7 +255,7 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
       difficulty: 'Principiante',
       equipment: 'Peso Corporal',
       type: 'Strength',
-      thumbnail: getMuscleDefaultImage(newExerciseMuscle) // Imagen por defecto profesional siempre
+      thumbnail: getMuscleDefaultImage(newExerciseMuscle)
     };
     const updatedLibrary = [newEx, ...library];
     setLibrary(updatedLibrary);
@@ -180,15 +265,20 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
 
   const duplicateSet = (idx: number) => {
     const updated = [...exerciseSets];
-    const setToDuplicate = { ...updated[idx], completed: false };
+    const setToDuplicate = { ...updated[idx], completed: false, duration: 0 };
     updated.splice(idx + 1, 0, setToDuplicate);
     setExerciseSets(updated);
   };
 
-  const removeSet = (idx: number) => { if (exerciseSets.length <= 1) return; setExerciseSets(exerciseSets.filter((_, i) => i !== idx)); };
+  const removeSet = (idx: number) => { 
+    if (exerciseSets.length <= 1) return; 
+    if (activeSetIdx === idx) setActiveSetIdx(null);
+    setExerciseSets(exerciseSets.filter((_, i) => i !== idx)); 
+  };
+  
   const handleTouchStart = (e: React.TouchEvent) => { touchStartRef.current = e.touches[0].clientY; };
   const handleTouchMove = (e: React.TouchEvent) => { if (touchStartRef.current === null) return; const currentY = e.touches[0].clientY; const diff = currentY - touchStartRef.current; if (diff > 0) setTranslateY(diff * 0.5); };
-  const handleTouchEnd = () => { if (translateY > 150) { localStorage.removeItem('gymProgress_active_session_state'); if (onCancel) onCancel(); } else setTranslateY(0); touchStartRef.current = null; };
+  const handleTouchEnd = () => { if (translateY > 150) { handleCancelWorkout(); } else setTranslateY(0); touchStartRef.current = null; };
 
   const filteredLibrary = useMemo(() => {
     return library.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase()) || ex.muscleGroup.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -206,30 +296,170 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
   if (!sessionRoutine) return null;
   const currentExercise = sessionRoutine.exercises[currentExerciseIdx];
   const formatTime = (s: number) => new Date(s * 1000).toISOString().substr(11, 8);
+  const formatShortTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="h-full flex flex-col bg-background-light dark:bg-background-dark overflow-hidden relative transition-transform duration-300 ease-out" style={{ transform: `translateY(${translateY}px)` }}>
+      
+      {isPreStarting && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-500">
+           <div className="w-full max-w-sm bg-white dark:bg-surface-dark rounded-[3.5rem] shadow-2xl animate-in zoom-in-95 duration-500 border border-white/10 flex flex-col max-h-[90dvh] overflow-hidden">
+              <div className="flex-1 overflow-y-auto no-scrollbar p-6 sm:p-10 flex flex-col items-center">
+                <div className="size-20 sm:size-24 rounded-[2.2rem] bg-primary flex items-center justify-center text-black mb-6 sm:mb-8 shadow-2xl shadow-primary/30 shrink-0">
+                  <span className="material-symbols-outlined text-4xl sm:text-5xl font-black">timer</span>
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black tracking-tighter text-center mb-2">Configuración</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium text-center mb-8 sm:mb-10 leading-relaxed max-w-[240px]">
+                  Configura tu temporizador de descanso antes de empezar.
+                </p>
+                <div className="w-full space-y-6 sm:space-y-8">
+                  <button 
+                    onClick={() => setAutoRestEnabled(!autoRestEnabled)}
+                    className={`w-full min-h-[70px] sm:h-20 rounded-3xl flex items-center justify-between px-5 sm:px-6 transition-all border-2 ${autoRestEnabled ? 'bg-primary/10 border-primary text-primary-text dark:text-primary' : 'bg-slate-50 dark:bg-background-dark border-black/5 text-slate-400'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined font-black text-xl sm:text-2xl">{autoRestEnabled ? 'check_circle' : 'do_not_disturb_on'}</span>
+                      <div className="text-left">
+                        <span className="block text-[10px] sm:text-xs font-black uppercase tracking-widest">{autoRestEnabled ? 'Descanso Activado' : 'Sin Descanso'}</span>
+                        <span className="block text-[8px] opacity-60 font-bold uppercase tracking-widest">Automático</span>
+                      </div>
+                    </div>
+                    <div className={`w-10 sm:w-12 h-5 sm:h-6 rounded-full relative transition-colors ${autoRestEnabled ? 'bg-primary' : 'bg-slate-300'}`}>
+                      <div className={`absolute top-1 size-3 sm:size-4 bg-white rounded-full shadow-sm transition-all ${autoRestEnabled ? 'left-6 sm:left-7' : 'left-1'}`}></div>
+                    </div>
+                  </button>
+                  {autoRestEnabled && (
+                    <div className="animate-in slide-in-from-top-4 duration-500">
+                      <p className="text-[9px] sm:text-[10px] font-black uppercase text-slate-400 text-center tracking-[0.3em] mb-4">Intervalo (Segundos)</p>
+                      <div className="flex items-center justify-center gap-4 sm:gap-6">
+                         <button 
+                          onClick={() => setRestDuration(Math.max(30, restDuration - 30))}
+                          className="size-16 sm:size-20 bg-slate-100 dark:bg-background-dark rounded-[1.8rem] sm:rounded-[2rem] flex items-center justify-center text-slate-500 active:scale-75 active:bg-primary active:text-black transition-all shadow-lg border border-black/5 shrink-0"
+                         >
+                           <span className="material-symbols-outlined text-3xl sm:text-4xl font-black">remove</span>
+                         </button>
+                         <div className="flex flex-col items-center min-w-[80px]">
+                            <span className="text-4xl sm:text-5xl font-black tabular-nums tracking-tighter leading-none">{restDuration}</span>
+                            <span className="text-[8px] sm:text-[10px] font-black uppercase text-slate-400 tracking-widest mt-1">Segs</span>
+                         </div>
+                         <button 
+                          onClick={() => setRestDuration(Math.min(600, restDuration + 30))}
+                          className="size-16 sm:size-20 bg-slate-100 dark:bg-background-dark rounded-[1.8rem] sm:rounded-[2rem] flex items-center justify-center text-slate-500 active:scale-75 active:bg-primary active:text-black transition-all shadow-lg border border-black/5 shrink-0"
+                         >
+                           <span className="material-symbols-outlined text-3xl sm:text-4xl font-black">add</span>
+                         </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="p-6 sm:p-10 pt-0 bg-white dark:bg-surface-dark w-full border-t border-black/5 dark:border-white/5">
+                <button 
+                  onClick={() => setIsPreStarting(false)}
+                  className="w-full h-20 sm:h-24 bg-primary text-black rounded-full font-black text-xl sm:text-2xl shadow-2xl active:scale-95 transition-all uppercase tracking-[0.1em] flex items-center justify-center gap-4"
+                >
+                  <span className="material-symbols-outlined text-2xl sm:text-3xl font-black">play_arrow</span>
+                  ¡EMPEZAR!
+                </button>
+                <button 
+                  onClick={handleCancelWorkout}
+                  className="w-full py-4 text-slate-400 font-black text-[9px] sm:text-[10px] uppercase tracking-[0.3em] active:scale-90 transition-all mt-2"
+                >
+                  Cancelar sesión
+                </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       {isResting && (<div className="absolute top-24 left-1/2 -translate-x-1/2 z-[80] animate-in slide-in-from-top duration-300"><div className="bg-black/90 text-white px-6 py-3 rounded-full flex items-center gap-4 shadow-2xl border border-white/20 backdrop-blur-md"><span className="material-symbols-outlined text-primary text-xl animate-pulse">timer</span><span className="text-xl font-black tabular-nums">{restSeconds}s</span><button onClick={() => setIsResting(false)} className="text-[10px] font-black uppercase text-primary tracking-widest ml-2 bg-white/10 px-3 py-1 rounded-full">Saltar</button></div></div>)}
+      
       <header className="sticky top-0 z-50 bg-white/90 dark:bg-background-dark/95 backdrop-blur-xl border-b border-black/5 dark:border-white/5" style={{ paddingTop: 'calc(max(1rem, env(safe-area-inset-top)) + 0.5rem)', paddingBottom: '0.75rem' }} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         <div className="px-4 flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2"><button onClick={() => { localStorage.removeItem('gymProgress_active_session_state'); if(onCancel) onCancel(); }} className="size-11 rounded-2xl flex items-center justify-center bg-slate-100 dark:bg-white/10 text-slate-500 border border-black/5 transition-all active:scale-90"><span className="material-symbols-outlined text-[22px]">close</span></button><button onClick={() => setShowConfig(true)} className={`size-11 rounded-2xl flex items-center justify-center shadow-md border transition-all active:scale-90 ${autoRestEnabled ? 'bg-primary text-black border-primary' : 'bg-slate-100 dark:bg-white/10 text-slate-400 border-black/5'}`}><span className="material-symbols-outlined text-[22px]">timer</span></button></div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleCancelWorkout} className="size-11 rounded-2xl flex items-center justify-center bg-slate-100 dark:bg-white/10 text-slate-500 border border-black/5 transition-all active:scale-90">
+              <span className="material-symbols-outlined text-[22px]">close</span>
+            </button>
+            <button onClick={() => setShowConfig(true)} className={`size-11 rounded-2xl flex items-center justify-center shadow-md border transition-all active:scale-90 ${autoRestEnabled ? 'bg-primary text-black border-primary' : 'bg-slate-100 dark:bg-white/10 text-slate-400 border-black/5'}`}>
+              <span className="material-symbols-outlined text-[22px]">timer</span>
+            </button>
+          </div>
           <div className="text-center"><p className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-0.5">Entrenamiento</p><div className="text-2xl font-black tabular-nums leading-none text-slate-900 dark:text-white">{formatTime(seconds)}</div></div>
-          <button onClick={nextExercise} className="px-6 h-11 bg-primary rounded-2xl text-black text-xs font-black shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center disabled:opacity-30" disabled={sessionRoutine.exercises.length === 0}>{currentExerciseIdx === sessionRoutine.exercises.length - 1 ? 'HECHO' : 'SIG.'}</button>
+          <button onClick={nextExercise} className="px-6 h-11 bg-primary rounded-2xl text-black text-xs font-black shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center disabled:opacity-30" disabled={sessionRoutine.exercises.length === 0}>{currentExerciseIdx === sessionRoutine.exercises.length - 1 ? 'TERMINAR' : 'SIG.'}</button>
         </div>
         <div className="px-4"><div className="w-full h-1.5 bg-slate-100 dark:bg-white/5 relative overflow-hidden rounded-full shadow-inner"><div className="absolute left-0 top-0 h-full bg-primary transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]" style={{ width: `${totalProgress}%` }}></div></div></div>
       </header>
+
       <main className="flex-1 overflow-y-auto no-scrollbar px-4 pt-6 pb-48">
         {!currentExercise ? (<div className="h-full flex flex-col items-center justify-center text-center p-8 animate-in zoom-in-95 duration-500"><div className="size-32 rounded-[2.5rem] bg-primary/10 flex items-center justify-center text-primary mb-8 shadow-inner animate-pulse"><span className="material-symbols-outlined text-6xl fill-1">play_circle</span></div><h2 className="text-3xl font-black mb-2 tracking-tighter">Sesión Vacía</h2><button onClick={() => { setIsCreatingNew(false); setShowExerciseSelector(true); }} className="w-full py-7 rounded-[2.5rem] bg-primary text-black font-black text-xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4"><span className="material-symbols-outlined font-black text-2xl">add_circle</span>Añadir Ejercicio</button></div>) : (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300" key={currentExercise.exerciseId + currentExerciseIdx}>
             <div className="mb-6 flex justify-between items-start"><div className="flex-1 min-w-0 pr-4"><h1 className="text-2xl font-black leading-tight tracking-tighter truncate">{currentExercise.name}</h1><div className="flex items-center gap-2 mt-1"><span className="text-[9px] font-black text-primary-text uppercase tracking-widest bg-primary px-2.5 py-0.5 rounded-full">Serie Actual: {exerciseSets.filter(s => s.completed).length + 1}</span><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-2.5 py-0.5 rounded-full">{currentExerciseIdx + 1} / {sessionRoutine.exercises.length}</span></div></div><button onClick={prevExercise} disabled={currentExerciseIdx === 0} className="size-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 disabled:opacity-30"><span className="material-symbols-outlined">chevron_left</span></button></div>
             <div className="space-y-6">
-              {exerciseSets.map((set, idx) => (<div key={idx} className={`relative overflow-hidden bg-white dark:bg-surface-dark rounded-[2.5rem] p-5 shadow-lg border-2 transition-all duration-300 ${set.completed ? 'border-green-500 bg-green-50/20 dark:bg-green-950/20' : 'border-black/5'}`}><div className="flex items-center justify-between mb-4 px-1"><div className="flex items-center gap-3"><div className={`size-8 rounded-lg flex items-center justify-center font-black text-sm ${set.completed ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-background-dark text-slate-400'}`}>{idx + 1}</div><h3 className="font-black text-[9px] uppercase tracking-widest text-slate-400">Control de Serie</h3></div><div className="flex gap-2"><button onClick={() => duplicateSet(idx)} title="Duplicar serie" className="size-10 flex items-center justify-center rounded-xl bg-primary text-black transition-all duration-300 active:scale-90 shadow-md hover:scale-105"><span className="material-symbols-outlined text-[20px] font-black">content_copy</span></button><button onClick={() => removeSet(idx)} className="size-10 flex items-center justify-center rounded-xl text-slate-300 hover:text-red-500 transition-all"><span className="material-symbols-outlined">close</span></button></div></div><div className="space-y-6"><div className="flex flex-col gap-4"><div className="space-y-2"><span className="text-[8px] font-black uppercase text-slate-400 tracking-widest ml-4 transition-colors group-focus-within:text-primary">Carga ({userProfile.weightUnit})</span><div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-background-dark/50 p-2 rounded-full shadow-inner border border-black/5"><button onClick={() => updateSetValue(idx, 'weight', set.weight - 2.5)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">remove</span></button><input type="number" min="0" step="0.5" value={set.weight} onChange={(e) => updateSetValue(idx, 'weight', parseFloat(e.target.value) || 0)} className="flex-1 bg-transparent border-0 text-center font-black text-4xl focus:ring-0 tabular-nums p-0 min-w-0" /><button onClick={() => updateSetValue(idx, 'weight', set.weight + 2.5)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">add</span></button></div></div><div className="space-y-2"><span className="text-[8px] font-black uppercase text-slate-400 tracking-widest ml-4">Repeticiones</span><div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-background-dark/50 p-2 rounded-full shadow-inner border border-black/5"><button onClick={() => updateSetValue(idx, 'reps', set.reps - 1)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">remove</span></button><input type="number" min="0" value={set.reps} onChange={(e) => updateSetValue(idx, 'reps', parseInt(e.target.value) || 0)} className="flex-1 bg-transparent border-0 text-center font-black text-4xl focus:ring-0 tabular-nums p-0 min-w-0" /><button onClick={() => updateSetValue(idx, 'reps', set.reps + 1)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">add</span></button></div></div></div><button onClick={() => handleToggleSet(idx)} className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg ${set.completed ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-black dark:bg-white text-white dark:text-black shadow-black/10'}`}>{set.completed ? '¡Completada!' : 'Marcar Serie'}</button></div></div>))}
-              <button onClick={() => setExerciseSets([...exerciseSets, { weight: exerciseSets[exerciseSets.length-1]?.weight || 0, reps: 10, completed: false }])} className="w-full py-6 rounded-[2rem] border-4 border-dashed border-slate-200 dark:border-white/5 text-[9px] font-black uppercase text-slate-400 tracking-widest active:bg-slate-50 transition-all">+ Añadir serie extra</button>
+              {exerciseSets.map((set, idx) => (
+                <div key={idx} className={`relative overflow-hidden bg-white dark:bg-surface-dark rounded-[2.5rem] p-5 shadow-lg border-2 transition-all duration-300 ${set.completed ? 'border-green-500 bg-green-50/20 dark:bg-green-950/20' : 'border-black/5'}`}>
+                  <div className="flex items-center justify-between mb-4 px-1">
+                    <div className="flex items-center gap-3">
+                      <div className={`size-8 rounded-lg flex items-center justify-center font-black text-sm ${set.completed ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-background-dark text-slate-400'}`}>{idx + 1}</div>
+                      <h3 className="font-black text-[9px] uppercase tracking-widest text-slate-400">Control de Serie</h3>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => toggleSetTimer(idx)}
+                        disabled={set.completed}
+                        className={`size-10 flex items-center justify-center rounded-xl transition-all duration-300 active:scale-90 shadow-md ${activeSetIdx === idx ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 dark:bg-background-dark text-slate-400 disabled:opacity-30'}`}
+                      >
+                        <span className="material-symbols-outlined text-[20px] font-black">
+                          {activeSetIdx === idx ? 'stop_circle' : 'play_circle'}
+                        </span>
+                      </button>
+                      <button onClick={() => duplicateSet(idx)} title="Duplicar serie" className="size-10 flex items-center justify-center rounded-xl bg-primary text-black transition-all duration-300 active:scale-90 shadow-md hover:scale-105"><span className="material-symbols-outlined text-[20px] font-black">content_copy</span></button>
+                      <button onClick={() => removeSet(idx)} className="size-10 flex items-center justify-center rounded-xl text-slate-300 hover:text-red-500 transition-all"><span className="material-symbols-outlined">close</span></button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="flex flex-col gap-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center px-4">
+                          <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest transition-colors group-focus-within:text-primary">Carga ({userProfile.weightUnit})</span>
+                          {set.duration !== undefined && set.duration > 0 && (
+                            <div className="flex items-center gap-1.5 bg-black dark:bg-white/10 px-2.5 py-0.5 rounded-full">
+                               <span className={`size-1.5 rounded-full bg-primary ${activeSetIdx === idx ? 'animate-ping' : ''}`}></span>
+                               <span className="text-[8px] font-black text-primary tabular-nums uppercase">Ritmo: {formatShortTime(set.duration)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-background-dark/50 p-2 rounded-full shadow-inner border border-black/5">
+                          <button onClick={() => updateSetValue(idx, 'weight', set.weight - 2.5)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">remove</span></button>
+                          <input type="number" min="0" step="0.5" value={set.weight} onChange={(e) => updateSetValue(idx, 'weight', parseFloat(e.target.value) || 0)} className="flex-1 bg-transparent border-0 text-center font-black text-4xl focus:ring-0 tabular-nums p-0 min-w-0" />
+                          <button onClick={() => updateSetValue(idx, 'weight', set.weight + 2.5)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">add</span></button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest ml-4">Repeticiones</span>
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-background-dark/50 p-2 rounded-full shadow-inner border border-black/5">
+                          <button onClick={() => updateSetValue(idx, 'reps', set.reps - 1)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">remove</span></button>
+                          <input type="number" min="0" value={set.reps} onChange={(e) => updateSetValue(idx, 'reps', parseInt(e.target.value) || 0)} className="flex-1 bg-transparent border-0 text-center font-black text-4xl focus:ring-0 tabular-nums p-0 min-w-0" />
+                          <button onClick={() => updateSetValue(idx, 'reps', set.reps + 1)} className="size-16 bg-white dark:bg-surface-dark rounded-full shadow-md flex items-center justify-center active:scale-75 transition-all text-slate-500 shrink-0"><span className="material-symbols-outlined text-3xl font-black">add</span></button>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => handleToggleSet(idx)} className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg ${set.completed ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-black dark:bg-white text-white dark:text-black shadow-black/10'}`}>{set.completed ? '¡Completada!' : 'Marcar Serie'}</button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setExerciseSets([...exerciseSets, { weight: exerciseSets[exerciseSets.length-1]?.weight || 0, reps: 10, completed: false, duration: 0 }])} className="w-full py-6 rounded-[2rem] border-4 border-dashed border-slate-200 dark:border-white/5 text-[9px] font-black uppercase text-slate-400 tracking-widest active:bg-slate-50 transition-all">+ Añadir serie extra</button>
             </div>
           </div>
         )}
       </main>
-      <footer className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-background-light dark:from-background-dark via-background-light dark:via-background-dark to-transparent z-40"><div className="flex gap-4"><button onClick={() => { setIsCreatingNew(false); setShowExerciseSelector(true); }} className="size-16 bg-white dark:bg-surface-dark text-slate-400 rounded-full shadow-2xl flex items-center justify-center border-4 border-primary active:scale-95 transition-all shrink-0"><span className="material-symbols-outlined text-3xl">add</span></button><button onClick={nextExercise} disabled={sessionRoutine.exercises.length === 0} className="flex-1 h-16 bg-primary text-black rounded-2xl font-black text-lg shadow-2xl active:scale-95 transition-all disabled:opacity-50 tracking-tight">{currentExerciseIdx === sessionRoutine.exercises.length - 1 ? 'FINALIZAR SESIÓN' : 'SIGUIENTE EJERCICIO'}</button></div></footer>
+
+      <footer className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-background-light dark:from-background-dark via-background-light dark:via-background-dark to-transparent z-40"><div className="flex gap-4"><button onClick={() => { setIsCreatingNew(false); setShowExerciseSelector(true); }} className="size-16 bg-white dark:bg-surface-dark text-slate-400 rounded-full shadow-2xl flex items-center justify-center border-4 border-primary active:scale-95 transition-all shrink-0"><span className="material-symbols-outlined text-3xl">add</span></button><button onClick={nextExercise} disabled={sessionRoutine.exercises.length === 0} className="flex-1 h-16 bg-primary text-black rounded-2xl font-black text-lg shadow-2xl active:scale-95 transition-all disabled:opacity-50 tracking-tight">{currentExerciseIdx === sessionRoutine.exercises.length - 1 ? 'TERMINAR ENTRENO' : 'SIGUIENTE EJERCICIO'}</button></div></footer>
+      
       {showExerciseSelector && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xl flex items-end animate-in fade-in duration-300">
           <div onClick={() => { setShowExerciseSelector(false); setIsCreatingNew(false); }} className="absolute inset-0"></div>
@@ -261,7 +491,12 @@ const ActiveSession: React.FC<ActiveSessionProps> = ({ routine, onFinish, onCanc
           </div>
         </div>
       )}
-      {showConfig && (<div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200"><div onClick={() => setShowConfig(false)} className="absolute inset-0"></div><div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3rem] p-8 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95 relative"><h3 className="text-xl font-black tracking-tight">Temporizador</h3><div className="flex flex-col w-full gap-4"><div className="flex items-center justify-between px-2"><span className="text-sm font-bold">Auto-Descanso</span><button onClick={() => setAutoRestEnabled(!autoRestEnabled)} className={`w-14 h-7 rounded-full transition-colors relative ${autoRestEnabled ? 'bg-primary' : 'bg-slate-200'}`}><div className={`absolute top-1 size-5 bg-white rounded-full shadow-sm transition-all ${autoRestEnabled ? 'left-8' : 'left-1'}`}></div></button></div><div className="space-y-4"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duración: {restDuration}s</span><input type="range" min="30" max="300" step="15" value={restDuration} onChange={(e) => setRestDuration(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary" /></div></div><button onClick={() => setShowConfig(false)} className="w-full py-4 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm active:scale-95 transition-all">LISTO</button></div></div>)}
+
+      {showConfig && (<div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200"><div onClick={() => setShowConfig(false)} className="absolute inset-0"></div><div className="w-full max-w-xs bg-white dark:bg-surface-dark rounded-[3rem] p-8 shadow-2xl flex flex-col items-center text-center gap-8 animate-in zoom-in-95 relative"><h3 className="text-xl font-black tracking-tight">Temporizador</h3><div className="flex flex-col w-full gap-4"><div className="flex items-center justify-between px-2"><span className="text-sm font-bold">Auto-Descanso</span><button onClick={() => setAutoRestEnabled(!autoRestEnabled)} className={`w-14 h-7 rounded-full transition-colors relative ${autoRestEnabled ? 'bg-primary' : 'bg-slate-200'}`}><div className={`absolute top-1 size-5 bg-white rounded-full shadow-sm transition-all ${autoRestEnabled ? 'left-8' : 'left-1'}`}></div></button></div><div className="space-y-4"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duración: {restDuration}s</span><div className="flex items-center justify-between gap-2 mt-2">
+                <button onClick={() => setRestDuration(Math.max(30, restDuration - 30))} className="size-12 bg-slate-100 dark:bg-background-dark rounded-xl flex items-center justify-center shadow-md active:scale-75 transition-all"><span className="material-symbols-outlined font-black">remove</span></button>
+                <span className="text-2xl font-black tabular-nums">{restDuration}s</span>
+                <button onClick={() => setRestDuration(Math.min(600, restDuration + 30))} className="size-12 bg-slate-100 dark:bg-background-dark rounded-xl flex items-center justify-center shadow-md active:scale-75 transition-all"><span className="material-symbols-outlined font-black">add</span></button>
+              </div></div></div><button onClick={() => setShowConfig(false)} className="w-full py-4 rounded-full bg-black dark:bg-white text-white dark:text-black font-black text-sm active:scale-95 transition-all">LISTO</button></div></div>)}
     </div>
   );
 };
